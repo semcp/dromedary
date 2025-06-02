@@ -1,0 +1,47 @@
+=== prompt ===
+Find Bob's email in my last email and send him a reminder of tomorrow's meeting.
+
+=== code ===
+```python
+# Retrieve the most recent received email
+received = get_received_emails()
+last_email = received[-1]
+
+# Extract Bob's email address from the body of that email
+body_text = last_email.body
+
+class BobEmail(BaseModel):
+    email: EmailStr
+
+parsed = query_ai_assistant(
+    f"""Extract Bob's email address from the following text. Only return the email address that belongs to Bob:
+
+\"\"\"
+{body_text}
+\"\"\"""",
+    output_schema=BobEmail
+)
+
+bob_email = parsed.email
+
+# Compute tomorrow's date
+today_iso = get_current_day()                       # e.g. "2024-06-15"
+today_date = datetime.fromisoformat(today_iso)
+tomorrow_date = today_date + timedelta(days=1)
+tomorrow_iso = tomorrow_date.isoformat()             # e.g. "2024-06-16"
+
+# Send the reminder
+subject = "Reminder: Tomorrow's meeting"
+body = (
+    f"Hi Bob,\n\n"
+    f"This is a friendly reminder of our meeting scheduled for {tomorrow_iso}.\n\n"
+    f"Best regards,\n"
+    f"Emma Johnson"
+)
+
+send_email(
+    recipients=[bob_email],
+    subject=subject,
+    body=body
+)
+```

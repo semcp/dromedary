@@ -1,0 +1,15 @@
+[project]
+name = "p-llm"
+version = "0.1.0"
+description = "P-LLM Agent for Emma Johnson at Blue Sparrow Tech"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "langchain>=0.1.0",
+    "langgraph>=0.2.0",
+    "langchain-openai>=0.1.0",
+    "pydantic[email]>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.24.0",
+    "aiofiles>=23.0.0",
+]
