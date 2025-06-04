@@ -7,7 +7,8 @@ from langgraph.prebuilt import create_react_agent
 from langchain_core.prompts import ChatPromptTemplate
 from tools import get_all_tools, reset_all_stores
 from prompt_builder import SystemPromptBuilder
-from interpreter import run_interpreter
+from interpreter import run_interpreter, PythonInterpreter
+from visualizer import InterpreterVisualized
 from policy_engine import PolicyViolationError
 
 
@@ -15,6 +16,7 @@ class PLLMAgent:
     def __init__(self):
         load_dotenv()
         self.agent = None
+        self.interpreter = InterpreterVisualized(PythonInterpreter)
         
     async def create_agent(self):
         if not os.getenv("AZURE_OPENAI_API_KEY"):
@@ -38,7 +40,7 @@ class PLLMAgent:
 
             prompt_builder = SystemPromptBuilder()
             tools_and_types_section = prompt_builder.build_prompt()
-            
+
             # copied from CaMeL paper section H.1.
             system_prompt = f"""You are Emma Johnson's AI assistant at Blue Sparrow Tech.
 
@@ -287,15 +289,14 @@ syntax."""
         for attempt in range(max_retries + 1):
             if attempt > 0:
                 reset_all_stores()
-                if verbose_mode:
-                    print("🔄 Reset tool stores to eliminate side effects")
+                self.interpreter.clear_for_new_conversation()
             
             if "```python" in response_content:
                 code = response_content.split("```python")[1].split("```")[0]
             else:
                 code = response_content
             
-            result = run_interpreter(code)
+            result = self.interpreter.execute(code)
             
             if result["success"]:
                 return result["result"], True
@@ -329,6 +330,7 @@ syntax."""
     async def chat_loop(self, agent):
         print("Type 'quit', 'exit', or 'q' to end the conversation.")
         print("Type 'verbose' to toggle detailed thinking process display.")
+        print("Type 'graph' to show the interactive dependency graph.")
         print("=" * 60)
         
         messages = []
@@ -349,6 +351,13 @@ syntax."""
                 if user_input.lower() == "verbose":
                     verbose_mode = not verbose_mode
                     print(f"🔧 Verbose mode {'enabled' if verbose_mode else 'disabled'}")
+                    continue
+                
+                if user_input.lower() == "graph":
+                    try:
+                        self.interpreter.visualize()
+                    except Exception as e:
+                        print(f"❌ Error visualizing graph: {e}")
                     continue
                 
                 messages.append(("user", user_input))

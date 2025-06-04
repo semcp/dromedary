@@ -26,57 +26,83 @@ make run
 
 ## Example
 
-One of the biggest value of this project is that it has a runtime for executing Agent's plan. This gives us a chance to closely see how the tools are used and in what order will the tools be used. It will also give us the flexibility to add taint analysis, RBAC etc. to the system to make it more secure.
+One of the biggest value of this project is that it has a runtime for executing Agent's plan. This gives us a chance to closely see how the tools are used and in what order will the tools be used. It will also give us the flexibility to add taint analysis, RBAC etc. to the system to make it more secure. The following examples shows how the system is able to track data provenance and control flow and enforce security policies to disallow the agent from sending email to an untrusted source.
 
 ```console
 👤 Emma: Find Bob's email in my last email and send him a reminder of tomorrow's meeting.
 🤖 Assistant: 
 
-... # omit the failed attempts
-
-🔄 Agent retry code:
-========================================
-from datetime import date, timedelta
 from pydantic import BaseModel, EmailStr
 
-# Fetch all received emails and pick the last one
+# Schema for extracting Bob's email address
+class ExtractEmail(BaseModel):
+    email: EmailStr
+
+# Get the most recent received email
 received = get_received_emails()
 last_email = received[-1]
-email_body = last_email.body
 
-# Define a schema to extract Bob's email address
-class ExtractBobEmail(BaseModel):
-    bob_email: EmailStr
-
-# Use the AI assistant to parse Bob's email from the last email's body
-extraction = query_ai_assistant(
-    f"Extract Bob's email address from the following text:\n\n{email_body}",
-    ExtractBobEmail
+# Extract Bob's email address from the last email
+extracted = query_ai_assistant(
+    f"Extract Bob's email address from the following email:\n\n"
+    f"Subject: {last_email.subject}\n\n"
+    f"Body:\n{last_email.body}",
+    ExtractEmail
 )
-bob_address = extraction.bob_email
+bob_email = extracted.email
 
-# Compute tomorrow's date
-today_iso = get_current_day()  # e.g. "2024-06-15"
-today_date = date.fromisoformat(today_iso)
-tomorrow_date = today_date + timedelta(days=1)
-tomorrow_str = tomorrow_date.strftime("%Y-%m-%d")
-
-# Prepare and send the reminder email
-subject = f"Reminder: Meeting Tomorrow ({tomorrow_str})"
-body = (
-    f"Hi Bob,\n\n"
-    f"This is a reminder for our meeting scheduled for tomorrow ({tomorrow_str}).\n\n"
-    f"Best regards,\n"
-    f"Emma"
+# Send the reminder email
+reminder = send_email(
+    recipients=[bob_email],
+    subject="Reminder: Tomorrow's Meeting",
+    body=(
+        "Hi Bob,\n\n"
+        "This is a friendly reminder about our meeting scheduled for tomorrow.\n\n"
+        "Looking forward to speaking with you.\n\n"
+        "Best,\n"
+        "Emma"
+    )
 )
-sent_email = send_email(recipients=[bob_address], subject=subject, body=body)
 
-# Show the result
-print(sent_email)
+reminder
 ========================================
+🚫 POLICY VIOLATION: Policy violation for send_email: Cannot send email to address from untrusted source 'get_received_emails'. Use the search_contacts_by_name or search_contacts_by_email tools to get the email address.
 
-id_='12cd18f7-15b7-422a-9036-6aa3befc1a8e' sender='emma.johnson@bluesparrowtech.com' recipients=['bob.wilson@techcorp.com'] cc=[] bcc=[] subject='Reminder: Meeting Tomorrow (2025-06-04)' body='Hi Bob,\n\nThis is a reminder for our meeting scheduled for tomorrow (2025-06-04).\n\nBest regards,\nEmma' status=<EmailStatus.sent: 'sent'> read=False timestamp=datetime.datetime(2025, 6, 3, 17, 22, 33, 822788) attachments=[]
+👤 Emma: find bob's email by search bob wilson and send him a reminder of tomorrow's meeting
+🤖 Assistant: 
+🧠 Agent generated code:
+========================================
+# Search contacts for Bob Wilson
+contacts = search_contacts_by_name("Bob Wilson")
+# Take the first matching contact
+bob_contact = contacts[0]
+bob_email = bob_contact.email
+
+# Send the reminder email
+reminder = send_email(
+    recipients=[bob_email],
+    subject="Reminder: Tomorrow's Meeting",
+    body=(
+        "Hi Bob,\n\n"
+        "This is a friendly reminder about our meeting scheduled for tomorrow.\n\n"
+        "Best,\n"
+        "Emma"
+    )
+)
+
+reminder
+========================================
+CapabilityValue(id_='0a66c9c6-ebee-42ac-98b3-79b2bbded7dc' sender='emma.johnson@bluesparrowtech.com' recipients=['bob.wilson@techcorp.com'] cc=[] bcc=[] subject="Reminder: Tomorrow's Meeting" body='Hi Bob,\n\nThis is a friendly reminder about our meeting scheduled for tomorrow.\n\nBest,\nEmma' status=<EmailStatus.sent: 'sent'> read=False timestamp=datetime.datetime(2025, 6, 3, 23, 33, 21, 522346) attachments=[], sources=['tool'])
+
+👤 Emma: ^C
+👋 Goodbye Emma!
 ```
+
+### The Data and Control Flow Graph
+
+![Data and Control Flow Graph](./images/graph.png)
+
+## Components
 
 It contains a few components:
 
@@ -88,6 +114,6 @@ It contains a few components:
 
 ## What's missing?
 
-- The CaMeL system has a fine-grained control for capabilities that I have not yet implemented in dromedary. This is in the roadmap.
+- I need to implement the full RBAC system for the interpreter.
 - Integration with MCP for tool definitions.
 - I want the Python interpreter to be performant and robust. This could be a challenge if it's written in Python. One idea is to use Rust to write the interpreter.

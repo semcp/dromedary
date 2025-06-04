@@ -5,6 +5,7 @@ This directory contains all test files for the P-LLM system:
 - test_interpreter.py: Tests for the Python interpreter
 - test_policies.py: Tests for the policy engine
 - test_tools.py: Tests for the tool system
+- test_capability.py: Tests for the capability system
 """
 
 import os

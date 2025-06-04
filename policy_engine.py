@@ -90,7 +90,7 @@ class PolicyEngine:
         
         try:
             if tool_name == "send_email":
-                violations.extend(self._evaluate_email_policy(tool_args))
+                violations.extend(self._evaluate_email_policy(tool_args, additional_context))
             elif tool_name == "create_calendar_event":
                 violations.extend(self._evaluate_calendar_event_policy(tool_args))
             elif tool_name == "reschedule_calendar_event":
@@ -104,8 +104,8 @@ class PolicyEngine:
         is_allowed = len(violations) == 0
         return is_allowed, violations
     
-    def _evaluate_email_policy(self, tool_args: Dict[str, Any]) -> List[str]:
-        """Evaluate email policy rules"""
+    def _evaluate_email_policy(self, tool_args: Dict[str, Any], additional_context: Optional[Dict[str, Any]] = None) -> List[str]:
+        """Evaluate email policy rules including data provenance"""
         violations = []
         email_config = self.policy_rules["email_policy"]
         
@@ -116,6 +116,37 @@ class PolicyEngine:
                 violations.append(f"Email sending to {recipient} is not allowed")
             elif recipient not in email_config["allowed_recipients"]:
                 violations.append(f"Email sending to {recipient} is not in the allowed recipients list")
+        
+        violations.extend(self._check_recipient_provenance(additional_context))
+        
+        return violations
+    
+    def _check_recipient_provenance(self, additional_context: Optional[Dict[str, Any]]) -> List[str]:
+        """Check the data provenance of email recipients"""
+        violations = []
+        
+        if not additional_context:
+            return violations
+        
+        capability_values = additional_context.get("capability_values", {})
+        recipients_cap = capability_values.get("recipients")
+        
+        if not recipients_cap or not hasattr(recipients_cap, 'capability'):
+            return violations
+        
+        untrusted_tools = {
+            "get_received_emails",
+            "search_emails"
+        }
+        
+        tool_sources = []
+        for source in recipients_cap.capability.sources:
+            if source.type.value == "tool":
+                tool_sources.append(source.identifier)
+        
+        for tool_source in tool_sources:
+            if tool_source in untrusted_tools:
+                violations.append(f"Cannot send email to address from untrusted source '{tool_source}'. Use the search_contacts_by_name or search_contacts_by_email tools to get the email address.")
         
         return violations
     

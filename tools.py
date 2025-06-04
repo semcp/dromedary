@@ -17,6 +17,8 @@ class EmailStore:
             EmailContact(email="emma.johnson@bluesparrowtech.com", name="Emma Johnson"),
             EmailContact(email="john.doe@bluesparrowtech.com", name="John Doe"),
             EmailContact(email="jane.smith@bluesparrowtech.com", name="Jane Smith"),
+            EmailContact(email="bob.wilson@techcorp.com", name="Bob Wilson"),
+            EmailContact(email="alice.cooper@clientcorp.com", name="Alice Cooper"),
         ]
 
 class CalendarStore:
