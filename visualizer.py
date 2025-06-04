@@ -56,13 +56,15 @@ class DependencyGraphVisualizer:
         if not cap_value.capability.sources:
             return 'lightgray'
         
-        source_type = cap_value.capability.sources[0].type
+        source_type = cap_value.capability.sources[-1].type
+        
         if source_type == SourceType.USER:
             return 'lightgreen'
         elif source_type == SourceType.TOOL:
             return 'lightcyan'
         elif source_type == SourceType.SYSTEM:
             return 'lightsalmon'
+        
         return 'lightgray'
     
     def _add_variable_dependencies(self, var_name: str, cap_value: CapabilityValue, all_vars: Dict[str, CapabilityValue]):
