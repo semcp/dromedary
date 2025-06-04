@@ -12,6 +12,13 @@ class PolicyViolationError(Exception):
         self.violations = violations
 
 class PolicyEngine:
+    """
+    Policy engine for evaluating tool calls against security policies.
+    
+    Note: When accessing capability_values for provenance checking, use both parameter names 
+    and positional fallbacks (arg_0, arg_1, etc.) since the interpreter passes positional 
+    arguments with generic names.
+    """
     def __init__(self, policies_dir: str = "policies"):
         self.policies_dir = Path(policies_dir)
         self.policy_rules = {}
@@ -129,7 +136,9 @@ class PolicyEngine:
             return violations
         
         capability_values = additional_context.get("capability_values", {})
-        recipients_cap = capability_values.get("recipients")
+        
+        # Try to find recipients capability value - check both parameter name and positional args
+        recipients_cap = capability_values.get("arg_0") or capability_values.get("recipients")
         
         if not recipients_cap or not hasattr(recipients_cap, 'capability'):
             return violations
