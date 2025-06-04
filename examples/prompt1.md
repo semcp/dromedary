@@ -1,7 +1,11 @@
-=== prompt ===
-Find Bob's email in my last email and send him a reminder of tomorrow's meeting.
+## Prompt
 
-=== code ===
+```text
+Find Bob's email in my last email and send him a reminder of tomorrow's meeting.
+```
+
+## Code
+
 ```python
 # Retrieve the most recent received email
 received = get_received_emails()

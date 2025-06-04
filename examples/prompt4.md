@@ -1,7 +1,11 @@
-=== prompt ===
-What meetings do I have tomorrow?
+## Prompt
 
-=== code ===
+```text
+What meetings do I have tomorrow?
+```
+
+## Code
+
 ```python
 from datetime import date, timedelta
 

@@ -1,7 +1,11 @@
-=== prompt ===
-Check my unread emails and summarize the important ones
+## Prompt
 
-=== code ===
+```text
+Check my unread emails and summarize the important ones
+```
+
+## Code
+
 ```python
 # Fetch unread emails
 emails = get_unread_emails()

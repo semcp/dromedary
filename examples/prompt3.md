@@ -1,7 +1,11 @@
-=== prompt ===
-Send a follow-up email to the participants of yesterday's meeting
+## Prompt
 
-=== code ===
+```text
+Send a follow-up email to the participants of yesterday's meeting
+```
+
+## Code
+
 ```python
 today_str = get_current_day()  # e.g. "2024-06-15"
 today_dt = datetime.strptime(today_str, "%Y-%m-%d")
