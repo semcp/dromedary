@@ -136,7 +136,8 @@ class PolicyEngine:
         
         untrusted_tools = {
             "get_received_emails",
-            "search_emails"
+            "search_emails",
+            "get_unread_emails"
         }
         
         tool_sources = []
