@@ -1,7 +1,7 @@
 import matplotlib
 
 # use interactive backend
-matplotlib.use('TkAgg')
+matplotlib.use('MacOSX')
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -48,16 +48,16 @@ class DependencyGraphVisualizer:
     
     def _get_variable_color(self, cap_value: CapabilityValue) -> str:
         if not cap_value.capability.sources:
-            return 'gray'
+            return 'lightgray'
         
         source_type = cap_value.capability.sources[0].type
         if source_type == SourceType.USER:
-            return 'green'
+            return 'lightgreen'
         elif source_type == SourceType.TOOL:
-            return 'lightblue'
+            return 'lightcyan'
         elif source_type == SourceType.SYSTEM:
-            return 'orange'
-        return 'gray'
+            return 'lightsalmon'
+        return 'lightgray'
     
     def _add_variable_dependencies(self, var_name: str, cap_value: CapabilityValue, all_vars: Dict[str, CapabilityValue]):
         var_node_id = f"var_{var_name}"
@@ -116,7 +116,7 @@ class DependencyGraphVisualizer:
         if func_node_id not in self.graph:
             self.graph.add_node(func_node_id)
             self.node_labels[func_node_id] = f"{func_name}()"
-            self.node_colors[func_node_id] = 'blue'
+            self.node_colors[func_node_id] = 'lightblue'
         
         for var_name in input_vars:
             var_node_id = f"var_{var_name}"
@@ -142,22 +142,23 @@ class DependencyGraphVisualizer:
         else:
             pos = nx.spring_layout(self.graph, k=3.0, iterations=150, seed=42)
         
-        node_colors = [self.node_colors.get(node, 'gray') for node in self.graph.nodes()]
-        nx.draw_networkx_nodes(self.graph, pos, node_color=node_colors, node_size=1200, alpha=0.8)
+        node_colors = [self.node_colors.get(node, 'lightgray') for node in self.graph.nodes()]
+        nx.draw_networkx_nodes(self.graph, pos, node_color=node_colors, node_size=3000, alpha=0.9, edgecolors='black', linewidths=1)
         
-        nx.draw_networkx_edges(self.graph, pos, arrows=True, arrowsize=25, alpha=0.7, 
-                             edge_color='darkgray', width=2, arrowstyle='->')
+        nx.draw_networkx_edges(self.graph, pos, arrows=True, arrowsize=35, alpha=0.8, 
+                             edge_color='black', width=4, arrowstyle='-|>', connectionstyle='arc3,rad=0.05', min_source_margin=30, min_target_margin=25)
         
-        nx.draw_networkx_labels(self.graph, pos, self.node_labels, font_size=10, font_weight='bold')
+        nx.draw_networkx_labels(self.graph, pos, self.node_labels, font_size=11, font_weight='bold', 
+                              bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.8, edgecolor='none'))
         
         plt.title('Dromedary Data and Control Flow Graph', fontsize=16, fontweight='bold', pad=20)
         plt.axis('off')
         
         legend_elements = [
-            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='green', markersize=12, label='User Data'),
-            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', markersize=12, label='Function/Tool'),
-            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='lightblue', markersize=12, label='Tool Result'),
-            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='orange', markersize=12, label='System Operation'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='lightgreen', markersize=12, label='User Data'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='lightblue', markersize=12, label='Function/Tool'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='lightcyan', markersize=12, label='Tool Result'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='lightsalmon', markersize=12, label='System Operation'),
         ]
         plt.legend(handles=legend_elements, loc='upper right', fontsize=10)
         

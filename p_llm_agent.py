@@ -16,7 +16,8 @@ class PLLMAgent:
     def __init__(self):
         load_dotenv()
         self.agent = None
-        self.interpreter = InterpreterVisualized(PythonInterpreter)
+        self.interpreter = InterpreterVisualized(PythonInterpreter, enable_policies=False)
+        self.security_policy_enabled = False
         
     async def create_agent(self):
         if not os.getenv("AZURE_OPENAI_API_KEY"):
@@ -303,7 +304,6 @@ syntax."""
 
             if result["error_type"] == "policy":
                 print(f"🚫 POLICY VIOLATION: {result['error']}")
-                # TODO: human intervention needed
                 return result["error"], False
             
             if attempt < max_retries:
@@ -331,6 +331,7 @@ syntax."""
         print("Type 'quit', 'exit', or 'q' to end the conversation.")
         print("Type 'verbose' to toggle detailed thinking process display.")
         print("Type 'graph' to show the interactive dependency graph.")
+        print("Type 'policy' to toggle security policy enforcement.")
         print("=" * 60)
         
         messages = []
@@ -351,6 +352,12 @@ syntax."""
                 if user_input.lower() == "verbose":
                     verbose_mode = not verbose_mode
                     print(f"🔧 Verbose mode {'enabled' if verbose_mode else 'disabled'}")
+                    continue
+                
+                if user_input.lower() == "policy":
+                    self.security_policy_enabled = not self.security_policy_enabled
+                    self.interpreter.interpreter.enable_policies = self.security_policy_enabled
+                    print(f"🔒 Security policy {'enabled' if self.security_policy_enabled else 'disabled'}")
                     continue
                 
                 if user_input.lower() == "graph":
