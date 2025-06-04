@@ -1,7 +1,7 @@
 [project]
-name = "p-llm"
+name = "Dromedary"
 version = "0.1.0"
-description = "P-LLM Agent for Emma Johnson at Blue Sparrow Tech"
+description = "Dromedary is a one-humped Camel. It is my replication of the CaMeL system from a Google DeepMind"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -12,4 +12,6 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "httpx>=0.24.0",
     "aiofiles>=23.0.0",
+    "matplotlib>=3.7.0",
+    "networkx>=3.0.0",
 ]
