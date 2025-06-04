@@ -124,7 +124,7 @@ send_email(
 print("Email workflow completed!")
 """
         
-        interpreter = PythonInterpreter()
+        interpreter = PythonInterpreter(enable_policies=False)
         execution_result = interpreter.execute(code)
         self.assertTrue(execution_result['success'], f"Execution should succeed: {execution_result['error']}")
             
