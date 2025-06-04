@@ -65,16 +65,19 @@ class PythonInterpreter:
         if dependencies is None:
             dependencies = set()
             
-        all_sources_set = set()
+        sources_dict = {}
+        
         for dep in dependencies:
             if isinstance(dep, CapabilityValue):
                 for source in dep.capability.sources:
-                    all_sources_set.add((source.type, source.identifier))
+                    source_key = (source.type, source.identifier)
+                    sources_dict[source_key] = source
         
         system_source = Source(type=SourceType.SYSTEM, identifier="dromedary")
-        all_sources_set.add((system_source.type, system_source.identifier))
+        system_key = (system_source.type, system_source.identifier)
+        sources_dict[system_key] = system_source
         
-        sources = [Source(type=src_type, identifier=src_id) for src_type, src_id in all_sources_set]
+        sources = list(sources_dict.values())
         return self._create_capability_value(value, sources, dependencies)
     
     def _setup_ai_assistant(self):
@@ -211,27 +214,30 @@ class PythonInterpreter:
         unwrapped_schema = self._unwrap_value(output_schema)
         
         dependencies = set()
-        all_sources_set = set()
+        sources_dict = {}
         
         if isinstance(query, CapabilityValue):
             dependencies.add(query)
             dependencies.update(query.dependencies)
             for source in query.capability.sources:
-                all_sources_set.add((source.type, source.identifier))
+                source_key = (source.type, source.identifier)
+                sources_dict[source_key] = source
         
         if isinstance(output_schema, CapabilityValue):
             dependencies.add(output_schema)
             dependencies.update(output_schema.dependencies)
             for source in output_schema.capability.sources:
-                all_sources_set.add((source.type, source.identifier))
+                source_key = (source.type, source.identifier)
+                sources_dict[source_key] = source
         
         model_with_structure = self.llm.with_structured_output(unwrapped_schema)
         result = model_with_structure.invoke(unwrapped_query)
         
         system_source = Source(type=SourceType.SYSTEM, identifier="dromedary")
-        all_sources_set.add((system_source.type, system_source.identifier))
+        system_key = (system_source.type, system_source.identifier)
+        sources_dict[system_key] = system_source
         
-        sources = [Source(type=src_type, identifier=src_id) for src_type, src_id in all_sources_set]
+        sources = list(sources_dict.values())
         return self._create_capability_value(result, sources, dependencies)
     
     def execute(self, code: str) -> Dict[str, Any]:
@@ -977,6 +983,12 @@ class PythonInterpreter:
             else:
                 container_vars = self._extract_variable_names_from_container(arg)
                 arg_vars.extend(container_vars)
+                
+                if isinstance(arg, CapabilityValue):
+                    for dep in arg.dependencies:
+                        dep_var_name = self._get_variable_name(dep)
+                        if dep_var_name and dep_var_name not in arg_vars:
+                            arg_vars.append(dep_var_name)
         
         kwarg_vars = {}
         for k, v in kwargs.items():
@@ -987,6 +999,14 @@ class PythonInterpreter:
                 container_vars = self._extract_variable_names_from_container(v)
                 if container_vars:
                     kwarg_vars[k] = container_vars[0] if len(container_vars) == 1 else container_vars
+                elif isinstance(v, CapabilityValue):
+                    dep_vars = []
+                    for dep in v.dependencies:
+                        dep_var_name = self._get_variable_name(dep)
+                        if dep_var_name:
+                            dep_vars.append(dep_var_name)
+                    if dep_vars:
+                        kwarg_vars[k] = dep_vars[0] if len(dep_vars) == 1 else dep_vars
         
         call_record = {
             'function': func_name,
