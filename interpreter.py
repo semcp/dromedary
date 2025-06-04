@@ -2,7 +2,7 @@ import ast
 import os
 from datetime import datetime, timedelta, date, time, timezone
 from enum import Enum
-from typing import Any, Dict, Type, Set, List
+from typing import Any, Dict, Type, Set, List, Iterable, Union
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field, EmailStr
 
@@ -23,12 +23,12 @@ class PythonInterpreter:
         self._setup_tools()
         self._setup_ai_assistant()
     
-    def _create_capability_value(self, value: Any, sources: list = None, dependencies: Set[CapabilityValue] = None) -> CapabilityValue:
+    def _create_capability_value(self, value: Any, sources: list = None, dependencies: Dict[int, CapabilityValue] = None) -> CapabilityValue:
         """Helper to create a CapabilityValue with proper sources and dependencies"""
         if sources is None:
             sources = []
         if dependencies is None:
-            dependencies = set()
+            dependencies = {}
             
         capability = Capability()
         capability.sources = sources
@@ -45,33 +45,43 @@ class PythonInterpreter:
             return obj.value
         return obj
     
-    def _merge_dependencies(self, *cap_values) -> tuple[Set[CapabilityValue], list]:
+    def _merge_dependencies(self, *cap_values) -> tuple[Dict[int, CapabilityValue], list]:
         """Merge dependencies and sources from multiple CapabilityValues"""
-        all_dependencies = set()
-        all_sources_set = set()
+        all_dependencies = {}
+        all_sources_dict = {}
         
         for val in cap_values:
             if isinstance(val, CapabilityValue):
-                all_dependencies.add(val)
+                all_dependencies[id(val)] = val
                 all_dependencies.update(val.dependencies)
                 for source in val.capability.sources:
-                    all_sources_set.add((source.type, source.identifier))
+                    source_key = (source.type, source.identifier)
+                    if source_key not in all_sources_dict:
+                        all_sources_dict[source_key] = source
         
-        all_sources = [Source(type=src_type, identifier=src_id) for src_type, src_id in all_sources_set]
+        all_sources = list(all_sources_dict.values())
         return all_dependencies, all_sources
     
-    def _create_system_capability_value(self, value: Any, dependencies: Set[CapabilityValue] = None) -> CapabilityValue:
+    def _create_system_capability_value(self, value: Any, dependencies: Union[Dict[int, CapabilityValue], Iterable[CapabilityValue], None] = None) -> CapabilityValue:
         """Create a CapabilityValue for system-generated values (computations)"""
         if dependencies is None:
-            dependencies = set()
+            dependencies = {}
+        
+        if not isinstance(dependencies, dict):
+            dependencies_dict = {}
+            for dep in dependencies:
+                if isinstance(dep, CapabilityValue):
+                    dependencies_dict[id(dep)] = dep
+            dependencies = dependencies_dict
             
         sources_dict = {}
         
-        for dep in dependencies:
+        for dep in dependencies.values():
             if isinstance(dep, CapabilityValue):
                 for source in dep.capability.sources:
                     source_key = (source.type, source.identifier)
-                    sources_dict[source_key] = source
+                    if source_key not in sources_dict:
+                        sources_dict[source_key] = source
         
         system_source = Source(type=SourceType.SYSTEM, identifier="dromedary")
         system_key = (system_source.type, system_source.identifier)
@@ -171,6 +181,7 @@ class PythonInterpreter:
             capability_values = {}
             for i, arg in enumerate(args):
                 if isinstance(arg, CapabilityValue):
+                    # note this is a hard coded arg for non-positional arguments
                     capability_values[f"arg_{i}"] = arg
             for k, v in kwargs.items():
                 if isinstance(v, CapabilityValue):
@@ -213,22 +224,24 @@ class PythonInterpreter:
         unwrapped_query = self._unwrap_value(query)
         unwrapped_schema = self._unwrap_value(output_schema)
         
-        dependencies = set()
+        dependencies = {}
         sources_dict = {}
         
         if isinstance(query, CapabilityValue):
-            dependencies.add(query)
+            dependencies[id(query)] = query
             dependencies.update(query.dependencies)
             for source in query.capability.sources:
                 source_key = (source.type, source.identifier)
-                sources_dict[source_key] = source
+                if source_key not in sources_dict:
+                    sources_dict[source_key] = source
         
         if isinstance(output_schema, CapabilityValue):
-            dependencies.add(output_schema)
+            dependencies[id(output_schema)] = output_schema
             dependencies.update(output_schema.dependencies)
             for source in output_schema.capability.sources:
                 source_key = (source.type, source.identifier)
-                sources_dict[source_key] = source
+                if source_key not in sources_dict:
+                    sources_dict[source_key] = source
         
         model_with_structure = self.llm.with_structured_output(unwrapped_schema)
         result = model_with_structure.invoke(unwrapped_query)
@@ -308,14 +321,14 @@ class PythonInterpreter:
         
         elif isinstance(node, ast.List):
             result = []
-            all_dependencies = set()
+            all_dependencies = {}
             
             for elem in node.elts:
                 if isinstance(elem, ast.Starred):
                     starred_value = self._execute_node(elem.value)
                     starred_unwrapped = self._unwrap_value(starred_value)
                     if isinstance(starred_value, CapabilityValue):
-                        all_dependencies.add(starred_value)
+                        all_dependencies[id(starred_value)] = starred_value
                         all_dependencies.update(starred_value.dependencies)
                     
                     if hasattr(starred_unwrapped, '__iter__') and not isinstance(starred_unwrapped, (str, bytes)):
@@ -326,21 +339,21 @@ class PythonInterpreter:
                     elem_value = self._execute_node(elem)
                     result.append(self._unwrap_value(elem_value))
                     if isinstance(elem_value, CapabilityValue):
-                        all_dependencies.add(elem_value)
+                        all_dependencies[id(elem_value)] = elem_value
                         all_dependencies.update(elem_value.dependencies)
             
             return self._create_system_capability_value(result, all_dependencies)
         
         elif isinstance(node, ast.Tuple):
             result = []
-            all_dependencies = set()
+            all_dependencies = {}
             
             for elem in node.elts:
                 if isinstance(elem, ast.Starred):
                     starred_value = self._execute_node(elem.value)
                     starred_unwrapped = self._unwrap_value(starred_value)
                     if isinstance(starred_value, CapabilityValue):
-                        all_dependencies.add(starred_value)
+                        all_dependencies[id(starred_value)] = starred_value
                         all_dependencies.update(starred_value.dependencies)
                     
                     if hasattr(starred_unwrapped, '__iter__') and not isinstance(starred_unwrapped, (str, bytes)):
@@ -351,7 +364,7 @@ class PythonInterpreter:
                     elem_value = self._execute_node(elem)
                     result.append(self._unwrap_value(elem_value))
                     if isinstance(elem_value, CapabilityValue):
-                        all_dependencies.add(elem_value)
+                        all_dependencies[id(elem_value)] = elem_value
                         all_dependencies.update(elem_value.dependencies)
             
             return self._create_system_capability_value(tuple(result), all_dependencies)
@@ -362,14 +375,14 @@ class PythonInterpreter:
         elif isinstance(node, ast.Dict):
             keys = []
             values = []
-            all_dependencies = set()
+            all_dependencies = {}
             
             for k, v in zip(node.keys, node.values):
                 if k:
                     key_value = self._execute_node(k)
                     keys.append(self._unwrap_value(key_value))
                     if isinstance(key_value, CapabilityValue):
-                        all_dependencies.add(key_value)
+                        all_dependencies[id(key_value)] = key_value
                         all_dependencies.update(key_value.dependencies)
                 else:
                     keys.append(None)
@@ -377,21 +390,21 @@ class PythonInterpreter:
                 val_value = self._execute_node(v)
                 values.append(self._unwrap_value(val_value))
                 if isinstance(val_value, CapabilityValue):
-                    all_dependencies.add(val_value)
+                    all_dependencies[id(val_value)] = val_value
                     all_dependencies.update(val_value.dependencies)
             
             return self._create_system_capability_value(dict(zip(keys, values)), all_dependencies)
         
         elif isinstance(node, ast.Set):
             result = set()
-            all_dependencies = set()
+            all_dependencies = {}
             
             for elem in node.elts:
                 if isinstance(elem, ast.Starred):
                     starred_value = self._execute_node(elem.value)
                     starred_unwrapped = self._unwrap_value(starred_value)
                     if isinstance(starred_value, CapabilityValue):
-                        all_dependencies.add(starred_value)
+                        all_dependencies[id(starred_value)] = starred_value
                         all_dependencies.update(starred_value.dependencies)
                     
                     if hasattr(starred_unwrapped, '__iter__') and not isinstance(starred_unwrapped, (str, bytes)):
@@ -402,7 +415,7 @@ class PythonInterpreter:
                     elem_value = self._execute_node(elem)
                     result.add(self._unwrap_value(elem_value))
                     if isinstance(elem_value, CapabilityValue):
-                        all_dependencies.add(elem_value)
+                        all_dependencies[id(elem_value)] = elem_value
                         all_dependencies.update(elem_value.dependencies)
             
             return self._create_system_capability_value(result, all_dependencies)
@@ -412,10 +425,10 @@ class PythonInterpreter:
             unwrapped_func = self._unwrap_value(func)
             args = []
             unwrapped_args = []
-            all_dependencies = set()
+            all_dependencies = {}
             
             if isinstance(func, CapabilityValue):
-                all_dependencies.add(func)
+                all_dependencies[id(func)] = func
                 all_dependencies.update(func.dependencies)
             
             for arg in node.args:
@@ -423,7 +436,7 @@ class PythonInterpreter:
                     starred_value = self._execute_node(arg.value)
                     starred_unwrapped = self._unwrap_value(starred_value)
                     if isinstance(starred_value, CapabilityValue):
-                        all_dependencies.add(starred_value)
+                        all_dependencies[id(starred_value)] = starred_value
                         all_dependencies.update(starred_value.dependencies)
                     
                     if hasattr(starred_unwrapped, '__iter__') and not isinstance(starred_unwrapped, (str, bytes)):
@@ -435,7 +448,7 @@ class PythonInterpreter:
                     args.append(arg_value)
                     unwrapped_args.append(self._unwrap_value(arg_value))
                     if isinstance(arg_value, CapabilityValue):
-                        all_dependencies.add(arg_value)
+                        all_dependencies[id(arg_value)] = arg_value
                         all_dependencies.update(arg_value.dependencies)
             
             kwargs = {}
@@ -445,7 +458,7 @@ class PythonInterpreter:
                 kwargs[kw.arg] = kw_value
                 unwrapped_kwargs[kw.arg] = self._unwrap_value(kw_value)
                 if isinstance(kw_value, CapabilityValue):
-                    all_dependencies.add(kw_value)
+                    all_dependencies[id(kw_value)] = kw_value
                     all_dependencies.update(kw_value.dependencies)
             
             func_name = None
@@ -477,9 +490,9 @@ class PythonInterpreter:
             unwrapped_obj = self._unwrap_value(obj)
             result = getattr(unwrapped_obj, node.attr)
             
-            dependencies = set()
+            dependencies = {}
             if isinstance(obj, CapabilityValue):
-                dependencies.add(obj)
+                dependencies[id(obj)] = obj
                 dependencies.update(obj.dependencies)
             
             return self._create_system_capability_value(result, dependencies)
@@ -492,12 +505,12 @@ class PythonInterpreter:
             
             result = unwrapped_obj[unwrapped_key]
             
-            dependencies = set()
+            dependencies = {}
             if isinstance(obj, CapabilityValue):
-                dependencies.add(obj)
+                dependencies[id(obj)] = obj
                 dependencies.update(obj.dependencies)
             if isinstance(key, CapabilityValue):
-                dependencies.add(key)
+                dependencies[id(key)] = key
                 dependencies.update(key.dependencies)
             
             return self._create_system_capability_value(result, dependencies)
@@ -530,12 +543,12 @@ class PythonInterpreter:
             unwrapped_left = self._unwrap_value(left)
             unwrapped_right = self._unwrap_value(right)
             
-            dependencies = set()
+            dependencies = {}
             if isinstance(left, CapabilityValue):
-                dependencies.add(left)
+                dependencies[id(left)] = left
                 dependencies.update(left.dependencies)
             if isinstance(right, CapabilityValue):
-                dependencies.add(right)
+                dependencies[id(right)] = right
                 dependencies.update(right.dependencies)
             
             if isinstance(node.op, ast.Add):
@@ -569,9 +582,9 @@ class PythonInterpreter:
             operand = self._execute_node(node.operand)
             unwrapped_operand = self._unwrap_value(operand)
             
-            dependencies = set()
+            dependencies = {}
             if isinstance(operand, CapabilityValue):
-                dependencies.add(operand)
+                dependencies[id(operand)] = operand
                 dependencies.update(operand.dependencies)
             
             if isinstance(node.op, ast.UAdd):
@@ -589,10 +602,10 @@ class PythonInterpreter:
             left = self._execute_node(node.left)
             unwrapped_left = self._unwrap_value(left)
             result = True
-            dependencies = set()
+            dependencies = {}
             
             if isinstance(left, CapabilityValue):
-                dependencies.add(left)
+                dependencies[id(left)] = left
                 dependencies.update(left.dependencies)
             
             for op, comparator in zip(node.ops, node.comparators):
@@ -600,7 +613,7 @@ class PythonInterpreter:
                 unwrapped_right = self._unwrap_value(right)
                 
                 if isinstance(right, CapabilityValue):
-                    dependencies.add(right)
+                    dependencies[id(right)] = right
                     dependencies.update(right.dependencies)
                 
                 if isinstance(op, ast.Eq):
@@ -631,14 +644,14 @@ class PythonInterpreter:
             return self._create_system_capability_value(result, dependencies)
         
         elif isinstance(node, ast.BoolOp):
-            dependencies = set()
+            dependencies = {}
             
             if isinstance(node.op, ast.And):
                 for value in node.values:
                     result_cap = self._execute_node(value)
                     result = self._unwrap_value(result_cap)
                     if isinstance(result_cap, CapabilityValue):
-                        dependencies.add(result_cap)
+                        dependencies[id(result_cap)] = result_cap
                         dependencies.update(result_cap.dependencies)
                     if not result:
                         return self._create_system_capability_value(result, dependencies)
@@ -648,7 +661,7 @@ class PythonInterpreter:
                     result_cap = self._execute_node(value)
                     result = self._unwrap_value(result_cap)
                     if isinstance(result_cap, CapabilityValue):
-                        dependencies.add(result_cap)
+                        dependencies[id(result_cap)] = result_cap
                         dependencies.update(result_cap.dependencies)
                     if result:
                         return self._create_system_capability_value(result, dependencies)
@@ -676,7 +689,7 @@ class PythonInterpreter:
             result = None
             
             for item in unwrapped_iter:
-                item_cap = self._create_system_capability_value(item, {iter_obj} if isinstance(iter_obj, CapabilityValue) else set())
+                item_cap = self._create_system_capability_value(item, {iter_obj} if isinstance(iter_obj, CapabilityValue) else {})
                 self._assign_target(target, item_cap)
                 result = None
                 for stmt in node.body:
@@ -756,11 +769,11 @@ class PythonInterpreter:
             
             class_dict = {'__module__': '__main__'}
             annotations = {}
-            dependencies = set()
+            dependencies = {}
             
             for base in bases:
                 if isinstance(base, CapabilityValue):
-                    dependencies.add(base)
+                    dependencies[id(base)] = base
                     dependencies.update(base.dependencies)
             
             for stmt in node.body:
@@ -771,7 +784,7 @@ class PythonInterpreter:
                     annotations[field_name] = field_type
                     
                     if isinstance(field_type_cap, CapabilityValue):
-                        dependencies.add(field_type_cap)
+                        dependencies[id(field_type_cap)] = field_type_cap
                         dependencies.update(field_type_cap.dependencies)
                     
                     if stmt.value:
@@ -780,7 +793,7 @@ class PythonInterpreter:
                         class_dict[field_name] = default_value
                         
                         if isinstance(default_value_cap, CapabilityValue):
-                            dependencies.add(default_value_cap)
+                            dependencies[id(default_value_cap)] = default_value_cap
                             dependencies.update(default_value_cap.dependencies)
             
             class_dict['__annotations__'] = annotations
@@ -795,7 +808,7 @@ class PythonInterpreter:
         
         elif isinstance(node, ast.JoinedStr):
             result = ""
-            dependencies = set()
+            dependencies = {}
             
             for value in node.values:
                 if isinstance(value, ast.Str):
@@ -806,14 +819,14 @@ class PythonInterpreter:
                     val_cap = self._execute_node(value.value)
                     val = self._unwrap_value(val_cap)
                     if isinstance(val_cap, CapabilityValue):
-                        dependencies.add(val_cap)
+                        dependencies[id(val_cap)] = val_cap
                         dependencies.update(val_cap.dependencies)
                     
                     if value.format_spec:
                         format_spec_cap = self._execute_node(value.format_spec)
                         format_spec = self._unwrap_value(format_spec_cap)
                         if isinstance(format_spec_cap, CapabilityValue):
-                            dependencies.add(format_spec_cap)
+                            dependencies[id(format_spec_cap)] = format_spec_cap
                             dependencies.update(format_spec_cap.dependencies)
                         result += format(val, format_spec)
                     else:
@@ -826,7 +839,7 @@ class PythonInterpreter:
         
         elif isinstance(node, ast.ListComp):
             result = []
-            dependencies = set()
+            dependencies = {}
             
             def process_generators(generators, generator_index=0):
                 if generator_index >= len(generators):
@@ -834,7 +847,7 @@ class PythonInterpreter:
                     element = self._unwrap_value(element_cap)
                     result.append(element)
                     if isinstance(element_cap, CapabilityValue):
-                        dependencies.add(element_cap)
+                        dependencies[id(element_cap)] = element_cap
                         dependencies.update(element_cap.dependencies)
                     return
                 
@@ -842,20 +855,20 @@ class PythonInterpreter:
                 iter_cap = self._execute_node(generator.iter)
                 iter_obj = self._unwrap_value(iter_cap)
                 if isinstance(iter_cap, CapabilityValue):
-                    dependencies.add(iter_cap)
+                    dependencies[id(iter_cap)] = iter_cap
                     dependencies.update(iter_cap.dependencies)
                 
                 for iter_value in iter_obj:
                     old_globals = self.globals.copy()
                     try:
-                        iter_cap_value = self._create_system_capability_value(iter_value, {iter_cap} if isinstance(iter_cap, CapabilityValue) else set())
+                        iter_cap_value = self._create_system_capability_value(iter_value, {iter_cap} if isinstance(iter_cap, CapabilityValue) else {})
                         self._assign_target(generator.target, iter_cap_value)
                         should_continue = True
                         for if_clause in generator.ifs:
                             if_cap = self._execute_node(if_clause)
                             if_result = self._unwrap_value(if_cap)
                             if isinstance(if_cap, CapabilityValue):
-                                dependencies.add(if_cap)
+                                dependencies[id(if_cap)] = if_cap
                                 dependencies.update(if_cap.dependencies)
                             if not if_result:
                                 should_continue = False
@@ -904,28 +917,28 @@ class PythonInterpreter:
                     raise ValueError(f"not enough values to unpack (expected at least {non_starred_count}, got {len(values)})")
                 
                 for i in range(starred_index):
-                    item_cap = self._create_system_capability_value(values[i], {value} if isinstance(value, CapabilityValue) else set())
+                    item_cap = self._create_system_capability_value(values[i], {value} if isinstance(value, CapabilityValue) else {})
                     self._assign_target(target.elts[i], item_cap)
                 
                 starred_target = target.elts[starred_index]
                 if isinstance(starred_target, ast.Starred):
                     remaining_after_star = len(target.elts) - starred_index - 1
                     star_values = values[starred_index:len(values) - remaining_after_star] if remaining_after_star > 0 else values[starred_index:]
-                    star_cap = self._create_system_capability_value(star_values, {value} if isinstance(value, CapabilityValue) else set())
+                    star_cap = self._create_system_capability_value(star_values, {value} if isinstance(value, CapabilityValue) else {})
                     self._assign_target(starred_target.value, star_cap)
                 
                 remaining_targets = len(target.elts) - starred_index - 1
                 for i in range(remaining_targets):
                     target_idx = starred_index + 1 + i
                     value_idx = len(values) - remaining_targets + i
-                    item_cap = self._create_system_capability_value(values[value_idx], {value} if isinstance(value, CapabilityValue) else set())
+                    item_cap = self._create_system_capability_value(values[value_idx], {value} if isinstance(value, CapabilityValue) else {})
                     self._assign_target(target.elts[target_idx], item_cap)
             else:
                 if len(target.elts) != len(values):
                     raise ValueError(f"too many values to unpack (expected {len(target.elts)})")
                 
                 for target_elem, val in zip(target.elts, values):
-                    val_cap = self._create_system_capability_value(val, {value} if isinstance(value, CapabilityValue) else set())
+                    val_cap = self._create_system_capability_value(val, {value} if isinstance(value, CapabilityValue) else {})
                     self._assign_target(target_elem, val_cap)
         
         elif isinstance(target, ast.Subscript):
@@ -985,7 +998,7 @@ class PythonInterpreter:
                 arg_vars.extend(container_vars)
                 
                 if isinstance(arg, CapabilityValue):
-                    for dep in arg.dependencies:
+                    for dep in arg.dependencies.values():
                         dep_var_name = self._get_variable_name(dep)
                         if dep_var_name and dep_var_name not in arg_vars:
                             arg_vars.append(dep_var_name)
@@ -1001,7 +1014,7 @@ class PythonInterpreter:
                     kwarg_vars[k] = container_vars[0] if len(container_vars) == 1 else container_vars
                 elif isinstance(v, CapabilityValue):
                     dep_vars = []
-                    for dep in v.dependencies:
+                    for dep in v.dependencies.values():
                         dep_var_name = self._get_variable_name(dep)
                         if dep_var_name:
                             dep_vars.append(dep_var_name)

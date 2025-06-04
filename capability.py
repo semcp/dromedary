@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, List, Optional, Set
+from typing import Any, List, Optional, Set, Dict
 
 
 class SourceType(Enum):
@@ -28,7 +28,7 @@ class CapabilityValue:
     """ wraps a value with its capability """
     value: Any = None
     capability: Capability = field(default_factory=Capability)
-    dependencies: Set['CapabilityValue'] = field(default_factory=set)
+    dependencies: Dict[int, 'CapabilityValue'] = field(default_factory=dict)
 
     def __repr__(self):
         return f"CapabilityValue({self.value}, sources={[s.type.value for s in self.capability.sources]})"

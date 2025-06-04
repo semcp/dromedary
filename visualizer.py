@@ -71,13 +71,12 @@ class DependencyGraphVisualizer:
         var_node_id = f"var_{var_name}"
         
         direct_deps = []
-        for dep in cap_value.dependencies:
+        for dep in cap_value.dependencies.values():
             for dep_var_name, dep_cap_value in all_vars.items():
                 if dep is dep_cap_value:
                     direct_deps.append(dep_var_name)
                     break
         
-        # filter out indirect dependencies. If A->B->C, we only want to show B->C, not A->C
         filtered_deps = []
         for dep_var_name in direct_deps:
             is_indirect = False
@@ -86,7 +85,7 @@ class DependencyGraphVisualizer:
             for other_dep_name in direct_deps:
                 if other_dep_name != dep_var_name:
                     other_cap_value = all_vars[other_dep_name]
-                    for other_dep in other_cap_value.dependencies:
+                    for other_dep in other_cap_value.dependencies.values():
                         if other_dep is dep_cap_value:
                             is_indirect = True
                             break
@@ -214,7 +213,7 @@ class DependencyGraphVisualizer:
             level_groups[level].append(node)
         
         x_spacing = 4.0
-        y_spacing = 2.0
+        y_spacing = 4.0
         
         for level, nodes in level_groups.items():
             x = level * x_spacing
@@ -256,7 +255,7 @@ class DependencyGraphVisualizer:
             level_groups[level].append(node)
         
         x_spacing = 4.0
-        y_spacing = 2.0
+        y_spacing = 4.0
         
         for level, nodes in level_groups.items():
             x = level * x_spacing
@@ -388,8 +387,9 @@ class InterpreterVisualized:
         
         result = self.interpreter.execute(code)
         
-        if result["success"]:
-            execution_trace = self.interpreter.get_execution_trace() if hasattr(self.interpreter, 'get_execution_trace') else []
+        # Build the dependency graph regardless of success, as long as there's execution trace
+        execution_trace = self.interpreter.get_execution_trace() if hasattr(self.interpreter, 'get_execution_trace') else []
+        if execution_trace or result["success"]:
             self.visualizer.build_graph_from_execution_trace(self.interpreter.globals, execution_trace)
         
         return result
