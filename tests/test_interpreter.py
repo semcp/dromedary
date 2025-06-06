@@ -547,7 +547,7 @@ result1
         self.assertGreater(len(trace1), 0)
         self.assertEqual(trace1[0]['function'], 'send_email')
 
-        viz_interpreter.clear_for_new_conversation()
+        viz_interpreter.clear_for_new_conv()
         
         self.assertNotIn('bob_email', viz_interpreter.interpreter.globals)
         self.assertNotIn('subject', viz_interpreter.interpreter.globals)
@@ -658,7 +658,7 @@ first_email
         actual_var_nodes1 = {node for node in graph1_nodes if node.startswith('var_')}
         self.assertTrue(expected_var_nodes1.issubset(actual_var_nodes1))
         
-        viz_interpreter.clear_for_new_conversation()
+        viz_interpreter.clear_for_new_conv()
         
         graph_after_clear = set(viz_interpreter.visualizer.graph.nodes())
         self.assertEqual(len(graph_after_clear), 0)
@@ -705,7 +705,7 @@ sender = emails[0].sender if emails else "unknown"
         trace1 = viz_interpreter.interpreter.get_execution_trace()
         self.assertGreater(len(trace1), 0)
         
-        viz_interpreter.clear_for_new_conversation()
+        viz_interpreter.clear_for_new_conv()
         
         self.assertNotIn('emails', viz_interpreter.interpreter.globals)
         self.assertNotIn('sender', viz_interpreter.interpreter.globals)

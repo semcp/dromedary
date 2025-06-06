@@ -8,7 +8,7 @@ allowed_working_hours_end := 18
 max_participants := 10
 
 business_emails := {
-    "emma.johnson@bluesparrowtech.com",
+    "mossaka@bluesparrowtech.com",
     "john.doe@bluesparrowtech.com", 
     "jane.smith@bluesparrowtech.com",
     "mike.johnson@bluesparrowtech.com",

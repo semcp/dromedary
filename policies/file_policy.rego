@@ -16,7 +16,7 @@ allowed_share_permissions := {
 }
 
 business_emails := {
-    "emma.johnson@bluesparrowtech.com",
+    "mossaka@bluesparrowtech.com",
     "john.doe@bluesparrowtech.com", 
     "jane.smith@bluesparrowtech.com",
     "mike.johnson@bluesparrowtech.com",

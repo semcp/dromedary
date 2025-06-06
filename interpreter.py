@@ -275,14 +275,14 @@ class PythonInterpreter:
             return {
                 "success": False,
                 "result": None,
-                "error": f"Policy violation: {e}",
+                "error": f"{e}",
                 "error_type": "policy"
             }
         except Exception as e:
             return {
                 "success": False,
                 "result": None,
-                "error": f"Execution error: {e}",
+                "error": f"{e}",
                 "error_type": "runtime"
             }
     

@@ -1,6 +1,7 @@
 import os
 import asyncio
-from typing import Dict, Any
+import sys
+from typing import Dict, Any, List, Tuple
 from dotenv import load_dotenv
 from langchain_openai import AzureChatOpenAI
 from langgraph.prebuilt import create_react_agent
@@ -10,7 +11,12 @@ from prompt_builder import SystemPromptBuilder
 from interpreter import run_interpreter, PythonInterpreter
 from visualizer import InterpreterVisualized
 from policy_engine import PolicyViolationError
-
+from capability import CapabilityValue
+from rich.live import Live
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.text import Text
 
 class PLLMAgent:
     def __init__(self):
@@ -18,6 +24,9 @@ class PLLMAgent:
         self.agent = None
         self.interpreter = InterpreterVisualized(PythonInterpreter, enable_policies=False)
         self.security_policy_enabled = False
+        self.console = Console()
+        self.content_buffer = ""
+        self.streaming_active = False
         
     async def create_agent(self):
         if not os.getenv("AZURE_OPENAI_API_KEY"):
@@ -36,14 +45,14 @@ class PLLMAgent:
             )
             
             tools = get_all_tools()
-            print(f"✅ P-LLM tools loaded: {[tool.name for tool in tools]}")
-            print(f"🔧 Using deployment: {deployment}")
+            print(f"🔧 P-LLM tools: {[tool.name for tool in tools]}")
+            print(f"🤖 Using model: {deployment}")
 
             prompt_builder = SystemPromptBuilder()
             tools_and_types_section = prompt_builder.build_prompt()
 
             # copied from CaMeL paper section H.1.
-            system_prompt = f"""You are Emma Johnson's AI assistant at Blue Sparrow Tech.
+            system_prompt = f"""You are Mossaka's AI assistant at Blue Sparrow Tech.
 
 Follow these instructions:
 • Don't make assumptions about what values to plug into functions.
@@ -248,7 +257,7 @@ syntax."""
             return None
     
     async def initialize(self):
-        print("🚀 Initializing P-LLM Agent for Emma Johnson...")
+        print("Initializing P-LLM Agent for Mossaka...")
         print("-" * 60)
         
         agent = await self.create_agent()
@@ -258,39 +267,64 @@ syntax."""
         print("🎉 P-LLM Agent initialized successfully!")
         return agent
     
-    async def _get_agent_response(self, agent, messages, verbose_mode, is_retry=False):
-        if verbose_mode:
-            retry_label = "🔄 Agent retry code:" if is_retry else "🧠 Agent generated code:"
-            print(f"\n{retry_label}")
-            print("=" * 40)
-            
-            result = await agent.ainvoke({"messages": messages})
-            response_content = ""
-            if "messages" in result:
-                last_message = result["messages"][-1]
-                response_content = getattr(last_message, 'content', '')
-            
-            if response_content and "```python" in response_content:
-                code = response_content.split("```python")[1].split("```")[0].strip()
-                print(code)
-            else:
-                print(response_content or "No code generated.")
-            
-            print("=" * 40)
-            return response_content
-        else:
-            result = await agent.ainvoke({"messages": messages})
-            if "messages" in result:
-                last_message = result["messages"][-1]
-                return getattr(last_message, 'content', 'No response generated.')
-            else:
-                return "No response generated."
+    def _create_loading_panel(self) -> Panel:
+        return Panel(
+            Text("Generating plan...", style="dim"),
+            title="🤖 Plan",
+            border_style="yellow"
+        )
+    
+    def _create_content_panel(self, content: str) -> Panel:
+        try:
+            rendered = Markdown(content, code_theme="monokai")
+            return Panel(
+                rendered,
+                title="🤖 Plan",
+                border_style="blue"
+            )
+        except Exception as e:
+            return Panel(
+                Text(content),
+                title="🤖 Plan",
+                border_style="red"
+            )
 
-    async def _execute_with_retry(self, agent, messages, response_content, verbose_mode=False, max_retries=10):
+    async def _get_response(self, agent, messages):
+        self.content_buffer = ""
+        self.streaming_active = True
+        
+        try:
+            with Live(
+                self._create_loading_panel(),
+                console=self.console,
+                refresh_per_second=8,
+                auto_refresh=True,
+                transient=False
+            ) as live:
+                
+                async for token, metadata in agent.astream(
+                    {"messages": messages}, 
+                    stream_mode="messages"
+                ):
+                    if hasattr(token, 'content') and token.content:
+                        self.content_buffer += token.content
+                        
+                        live.update(self._create_content_panel(self.content_buffer))
+                
+                self.streaming_active = False
+                live.update(self._create_content_panel(self.content_buffer))
+                
+        except Exception as e:
+            self.console.print(f"[red]Streaming error: {e}[/red]")
+            
+        print("=" * 40)
+        return self.content_buffer
+    
+    async def _execute_with_retry(self, agent, messages, response_content, max_retries=10):
         for attempt in range(max_retries + 1):
             if attempt > 0:
                 reset_all_stores()
-                self.interpreter.clear_for_new_conversation()
+                self.interpreter.clear_for_new_conv()
             
             if "```python" in response_content:
                 code = response_content.split("```python")[1].split("```")[0]
@@ -303,19 +337,17 @@ syntax."""
                 return result["result"], True
 
             if result["error_type"] == "policy":
-                print(f"🚫 POLICY VIOLATION: {result['error']}")
-                return result["error"], False
+                return result, False
             
             if attempt < max_retries:
                 error_msg = result["error"]
                 print(f"⚠️ Attempt {attempt + 1} failed: {error_msg}")
-                print("🔄 Retrying with fresh state...")
-                # TODO: what's a better way to handle refreshing the state here?
+                print(f"🔄 Retrying... {attempt + 1}/{max_retries}")
                 
                 retry_prompt = f"The previous code had an error: {error_msg}. Please fix the code and try again."
                 messages.append(("user", retry_prompt))
                 
-                response_content = await self._get_agent_response(agent, messages, verbose_mode, is_retry=True)
+                response_content = await self._get_response(agent, messages)
                 
                 if response_content and response_content != "No response generated.":
                     messages.append(("assistant", response_content))
@@ -329,30 +361,23 @@ syntax."""
 
     async def chat_loop(self, agent):
         print("Type 'quit', 'exit', or 'q' to end the conversation.")
-        print("Type 'verbose' to toggle detailed thinking process display.")
         print("Type 'graph' to show the interactive dependency graph.")
         print("Type 'policy' to toggle security policy enforcement.")
         print("=" * 60)
         
         messages = []
-        verbose_mode = False
         
         while True:
             try:
-                user_input = input("\n👤 Emma: ").strip()
+                user_input = input("\n👤 Mossaka: ").strip()
                 
                 if not user_input:
                     print("Please enter a message.")
                     continue
                     
                 if user_input.lower() in ["quit", "exit", "q"]:
-                    print("👋 Goodbye Emma! Have a great day at Blue Sparrow Tech!")
+                    print("👋 Goodbye Mossaka! Have a great day at Blue Sparrow Tech!")
                     break
-                
-                if user_input.lower() == "verbose":
-                    verbose_mode = not verbose_mode
-                    print(f"🔧 Verbose mode {'enabled' if verbose_mode else 'disabled'}")
-                    continue
                 
                 if user_input.lower() == "policy":
                     self.security_policy_enabled = not self.security_policy_enabled
@@ -369,16 +394,16 @@ syntax."""
                 
                 messages.append(("user", user_input))
                 
-                print("🤖 Assistant: ", end="", flush=True)
-                
-                response_content = await self._get_agent_response(agent, messages, verbose_mode)
+                response_content = await self._get_response(agent, messages)
                 
                 if response_content and response_content != "No response generated.":
-                    result, success = await self._execute_with_retry(agent, messages, response_content, verbose_mode)
+                    result, success = await self._execute_with_retry(agent, messages, response_content)
                     if success:
-                        print(result)
+                        print(f"{format_result(result)}")
+                    elif result["error_type"] == "policy":
+                        print(f"🚫 POLICY VIOLATION: {result['error']}")
                     else:
-                        print(result)
+                        print(f"Error: {result}")
                 else:
                     print("No response generated.")
                 
@@ -386,13 +411,19 @@ syntax."""
                     messages.append(("assistant", response_content))
                 
             except KeyboardInterrupt:
-                print("\n👋 Goodbye Emma!")
+                print("\n👋 Goodbye Mossaka!")
                 break
             except Exception as e:
                 print(f"\n❌ Error: {e}")
                 print("Please try again.")
 
+def format_result(result):
+    if isinstance(result, CapabilityValue):
+        return str(result.value)
+    else:
+        return str(result)
 
+        
 async def main():
     try:
         agent_system = PLLMAgent()

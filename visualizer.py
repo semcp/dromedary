@@ -368,7 +368,7 @@ class InterpreterVisualized:
 
         self.visualizer.set_initial_globals(self.interpreter.globals)
     
-    def clear_for_new_conversation(self):
+    def clear_for_new_conv(self):
         """Clear the dependency graph and execution trace for a new conversation"""
         self.visualizer.clear_graph()
         if hasattr(self.interpreter, 'clear_execution_trace'):
