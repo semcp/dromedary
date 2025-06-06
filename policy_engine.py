@@ -34,7 +34,7 @@ class PolicyEngine:
                 "allowed_recipients": {
                     "bob.wilson@techcorp.com",
                     "alice.cooper@clientcorp.com",
-                    "emma.johnson@bluesparrowtech.com",
+                    "mossaka@bluesparrowtech.com",
                     "john.doe@bluesparrowtech.com",
                     "jane.smith@bluesparrowtech.com",
                 },
@@ -47,7 +47,7 @@ class PolicyEngine:
                 "allowed_working_hours_end": 18,
                 "max_participants": 10,
                 "business_emails": {
-                    "emma.johnson@bluesparrowtech.com",
+                    "mossaka@bluesparrowtech.com",
                     "john.doe@bluesparrowtech.com", 
                     "jane.smith@bluesparrowtech.com",
                     "mike.johnson@bluesparrowtech.com",
@@ -68,7 +68,7 @@ class PolicyEngine:
                     "write"
                 },
                 "business_emails": {
-                    "emma.johnson@bluesparrowtech.com",
+                    "mossaka@bluesparrowtech.com",
                     "john.doe@bluesparrowtech.com", 
                     "jane.smith@bluesparrowtech.com",
                     "mike.johnson@bluesparrowtech.com",

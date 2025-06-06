@@ -5,7 +5,7 @@ import rego.v1
 allowed_recipients := {
     "bob.wilson@techcorp.com",
     "alice.cooper@clientcorp.com",
-    "emma.johnson@bluesparrowtech.com",
+    "mossaka@bluesparrowtech.com",
     "john.doe@bluesparrowtech.com",
     "jane.smith@bluesparrowtech.com",
 }

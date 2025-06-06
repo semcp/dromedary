@@ -14,7 +14,7 @@ class EmailStore:
     def __init__(self):
         self.emails: List[Email] = []
         self.contacts: List[EmailContact] = [
-            EmailContact(email="emma.johnson@bluesparrowtech.com", name="Emma Johnson"),
+            EmailContact(email="mossaka@bluesparrowtech.com", name="Mossaka"),
             EmailContact(email="john.doe@bluesparrowtech.com", name="John Doe"),
             EmailContact(email="jane.smith@bluesparrowtech.com", name="Jane Smith"),
             EmailContact(email="bob.wilson@techcorp.com", name="Bob Wilson"),
@@ -42,9 +42,9 @@ def _populate_test_data():
         Email(
             id_="email-001",
             sender="mike.johnson@bluesparrowtech.com",
-            recipients=["emma.johnson@bluesparrowtech.com"],
+            recipients=["mossaka@bluesparrowtech.com"],
             subject="Re: Project Meeting Tomorrow",
-            body="Hi Emma,\n\nThanks for setting up the meeting for tomorrow. Bob will be there at 2 PM in Conference Room A.\n\nBob's email is bob.wilson@techcorp.com in case you need to reach me.\n\nBest regards,\nBob Wilson",
+            body="Hi Mossaka,\n\nThanks for setting up the meeting for tomorrow. Bob will be there at 2 PM in Conference Room A.\n\nBob's email is bob.wilson@techcorp.com in case you need to reach me.\n\nBest regards,\nBob Wilson",
             status=EmailStatus.received,
             timestamp=datetime.now() - timedelta(hours=2),
             read=False
@@ -52,9 +52,9 @@ def _populate_test_data():
         Email(
             id_="email-002", 
             sender="alice.cooper@clientcorp.com",
-            recipients=["emma.johnson@bluesparrowtech.com"],
+            recipients=["mossaka@bluesparrowtech.com"],
             subject="Follow up on quarterly report",
-            body="Hi Emma,\n\nI wanted to follow up on the quarterly report we discussed. When can we schedule a review meeting?\n\nContact me at alice.cooper@clientcorp.com\n\nBest,\nAlice Cooper",
+            body="Hi Mossaka,\n\nI wanted to follow up on the quarterly report we discussed. When can we schedule a review meeting?\n\nContact me at alice.cooper@clientcorp.com\n\nBest,\nAlice Cooper",
             status=EmailStatus.received,
             timestamp=datetime.now() - timedelta(hours=6),
             read=False
@@ -62,9 +62,9 @@ def _populate_test_data():
         Email(
             id_="email-003",
             sender="mike.johnson@bluesparrowtech.com", 
-            recipients=["emma.johnson@bluesparrowtech.com"],
+            recipients=["mossaka@bluesparrowtech.com"],
             subject="Team lunch this Friday",
-            body="Hey Emma,\n\nWe're organizing a team lunch this Friday at 12:30 PM. Let me know if you can make it!\n\nCheers,\nMike",
+            body="Hey Mossaka,\n\nWe're organizing a team lunch this Friday at 12:30 PM. Let me know if you can make it!\n\nCheers,\nMike",
             status=EmailStatus.received,
             timestamp=datetime.now() - timedelta(hours=12),
             read=True
@@ -116,7 +116,7 @@ def _populate_test_data():
             id_="file-001",
             filename="project-proposal.docx",
             content="This is a project proposal document with detailed specifications...",
-            owner="emma.johnson@bluesparrowtech.com",
+            owner="mossaka@bluesparrowtech.com",
             last_modified=datetime.now() - timedelta(hours=24),
             size=len("This is a project proposal document with detailed specifications...".encode('utf-8'))
         ),
@@ -124,7 +124,7 @@ def _populate_test_data():
             id_="file-002", 
             filename="meeting-notes.txt",
             content="Meeting notes from the last team sync:\n- Discussed project timeline\n- Reviewed budget allocations\n- Planned next deliverables",
-            owner="emma.johnson@bluesparrowtech.com",
+            owner="mossaka@bluesparrowtech.com",
             last_modified=datetime.now() - timedelta(hours=8),
             size=len("Meeting notes from the last team sync:\n- Discussed project timeline\n- Reviewed budget allocations\n- Planned next deliverables".encode('utf-8'))
         )
@@ -178,7 +178,7 @@ A calendar event has the following fields: `title`, `description`, `start_time` 
              bcc: Optional[List[str]] = None) -> Email:
         email = Email(
             id_=str(uuid.uuid4()),
-            sender="emma.johnson@bluesparrowtech.com",
+            sender="mossaka@bluesparrowtech.com",
             recipients=recipients,
             cc=cc or [],
             bcc=bcc or [],
@@ -434,7 +434,7 @@ class CreateFileTool(BaseTool):
             id_=str(uuid.uuid4()),
             filename=filename,
             content=content,
-            owner="emma.johnson@bluesparrowtech.com",
+            owner="mossaka@bluesparrowtech.com",
             last_modified=datetime.now(),
             size=len(content.encode('utf-8'))
         )

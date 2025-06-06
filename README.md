@@ -29,73 +29,76 @@ make run
 One of the biggest value of this project is that it has a runtime for executing Agent's plan. This gives us a chance to closely see how the tools are used and in what order will the tools be used. It will also give us the flexibility to add taint analysis, RBAC etc. to the system to make it more secure. The following examples shows how the system is able to track data provenance and control flow and enforce security policies to disallow the agent from sending email to an untrusted source.
 
 ```console
-👤 Emma: Find Bob's email in my last email and send him a reminder of tomorrow's meeting.
-🤖 Assistant: 
+👤 Mossaka: policy
+🔒 Security policy enabled
 
-from pydantic import BaseModel, EmailStr
-
-# Schema for extracting Bob's email address
-class ExtractEmail(BaseModel):
-    email: EmailStr
-
-# Get the most recent received email
-received = get_received_emails()
-last_email = received[-1]
-
-# Extract Bob's email address from the last email
-extracted = query_ai_assistant(
-    f"Extract Bob's email address from the following email:\n\n"
-    f"Subject: {last_email.subject}\n\n"
-    f"Body:\n{last_email.body}",
-    ExtractEmail
-)
-bob_email = extracted.email
-
-# Send the reminder email
-reminder = send_email(
-    recipients=[bob_email],
-    subject="Reminder: Tomorrow's Meeting",
-    body=(
-        "Hi Bob,\n\n"
-        "This is a friendly reminder about our meeting scheduled for tomorrow.\n\n"
-        "Looking forward to speaking with you.\n\n"
-        "Best,\n"
-        "Emma"
-    )
-)
-
-reminder
+👤 Mossaka: Find Bob's email in my last email and send him a reminder of tomorrow's meeting.
+╭───────────────────────────────────────────────────────────────────────────────────────── 🤖 Plan ─────────────────────────────────────────────────────────────────────────────────────────╮
+| from pydantic import BaseModel, EmailStr                                                                                                                                                  |
+|                                                                                                                                                                                           |
+| # Schema for extracting Bob's email address                                                                                                                                               |
+| class ExtractEmail(BaseModel):                                                                                                                                                            |
+|     email: EmailStr                                                                                                                                                                       |
+|                                                                                                                                                                                           |
+| # Get the most recent received email                                                                                                                                                      |
+| received = get_received_emails()                                                                                                                                                          |
+| last_email = received[-1]                                                                                                                                                                 |
+|                                                                                                                                                                                           |
+| # Extract Bob's email address from the last email                                                                                                                                         |
+| extracted = query_ai_assistant(                                                                                                                                                           |
+|     f"Extract Bob's email address from the following email:\n\n"                                                                                                                          |
+|     f"Subject: {last_email.subject}\n\n"                                                                                                                                                  |
+|     f"Body:\n{last_email.body}",                                                                                                                                                         |
+|     ExtractEmail                                                                                                                                                                          |
+| )                                                                                                                                                                                         |
+| bob_email = extracted.email                                                                                                                                                               |
+|                                                                                                                                                                                           |
+| # Send the reminder email                                                                                                                                                                 |
+| reminder = send_email(                                                                                                                                                                    |
+|     recipients=[bob_email],                                                                                                                                                               |
+|     subject="Reminder: Tomorrow's Meeting",                                                                                                                                               |
+|     body=(                                                                                                                                                                                |
+|         "Hi Bob,\n\n"                                                                                                                                                                     |
+|         "This is a friendly reminder about our meeting scheduled for tomorrow.\n\n"                                                                                                       |
+|         "Looking forward to speaking with you.\n\n"                                                                                                                                       |
+|         "Best,\n"                                                                                                                                                                         |
+|         "Mossaka"                                                                                                                                                                         |
+|     )                                                                                                                                                                                     |
+| )                                                                                                                                                                                         |
+| reminder                                                                                                                                                                                  |
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ========================================
 🚫 POLICY VIOLATION: Policy violation for send_email: Cannot send email to address from untrusted source 'get_received_emails'. Use the search_contacts_by_name or search_contacts_by_email tools to get the email address.
 
-👤 Emma: find bob's email by search bob wilson and send him a reminder of tomorrow's meeting
-🤖 Assistant: 
-🧠 Agent generated code:
+👤 Mossaka: find bob's email by search bob wilson and send him a reminder of tomorrow's meeting
+╭───────────────────────────────────────────────────────────────────────────────────────── 🤖 Plan ─────────────────────────────────────────────────────────────────────────────────────────╮
+|from pydantic import BaseModel, EmailStr                                                                                                                                                   |
+|                                                                                                                                                                                           |
+|# Search contacts for Bob Wilson                                                                                                                                                           |
+|contacts = search_contacts_by_name("Bob Wilson")                                                                                                                                           |
+|# Take the first matching contact                                                                                                                                                          |
+|bob_contact = contacts[0]                                                                                                                                                                  |
+|bob_email = bob_contact.email                                                                                                                                                              |
+|                                                                                                                                                                                           |
+|# Send the reminder email                                                                                                                                                                  |
+|reminder = send_email(                                                                                                                                                                     |
+|    recipients=[bob_email],                                                                                                                                                                |
+|    subject="Reminder: Tomorrow's Meeting",                                                                                                                                                |
+|    body=(                                                                                                                                                                                 |
+|        "Hi Bob,\n\n"                                                                                                                                                                      |
+|        "This is a friendly reminder about our meeting scheduled for tomorrow.\n\n"                                                                                                        |
+|        "Looking forward to speaking with you.\n\n"                                                                                                                                        |
+|        "Best,\n"                                                                                                                                                                          |
+|        "Mossaka"                                                                                                                                                                          |
+|    )                                                                                                                                                                                      |
+|)                                                                                                                                                                                          |
+|reminder                                                                                                                                                                                   |
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ========================================
-# Search contacts for Bob Wilson
-contacts = search_contacts_by_name("Bob Wilson")
-# Take the first matching contact
-bob_contact = contacts[0]
-bob_email = bob_contact.email
+Reminder: Tomorrow's Meeting | To: bob.wilson@techcorp.com | 2025-06-05 22:07
 
-# Send the reminder email
-reminder = send_email(
-    recipients=[bob_email],
-    subject="Reminder: Tomorrow's Meeting",
-    body=(
-        "Hi Bob,\n\n"
-        "This is a friendly reminder about our meeting scheduled for tomorrow.\n\n"
-        "Best,\n"
-        "Emma"
-    )
-)
-
-reminder
-========================================
-CapabilityValue(id_='0a66c9c6-ebee-42ac-98b3-79b2bbded7dc' sender='emma.johnson@bluesparrowtech.com' recipients=['bob.wilson@techcorp.com'] cc=[] bcc=[] subject="Reminder: Tomorrow's Meeting" body='Hi Bob,\n\nThis is a friendly reminder about our meeting scheduled for tomorrow.\n\nBest,\nEmma' status=<EmailStatus.sent: 'sent'> read=False timestamp=datetime.datetime(2025, 6, 3, 23, 33, 21, 522346) attachments=[], sources=['tool'])
-
-👤 Emma: ^C
-👋 Goodbye Emma!
+👤 Mossaka: ^C
+👋 Goodbye Mossaka!
 ```
 
 ### The Data and Control Flow Graph
