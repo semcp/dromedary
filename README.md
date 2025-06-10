@@ -4,6 +4,10 @@ Dromedary is a one-humped Camel. It is my replication of the CaMeL system from a
 
 > :construction: Warning: This project is still in the early stage of development. Many aspects of the system are not yet implemented. Please see the [What's missing?](#whats-missing) section for more details.
 
+
+https://github.com/user-attachments/assets/978103b7-d87e-4c08-a89b-762717b21c79
+
+
 ## What's the point of this project?
 
 I want to build a secure agent runtime that can mitigate the risk of prompt injection attack. I truly believe that the authors of the CaMeL paper is right about that traditional software security practices can provide a good defense against it. Thus I want to build a replication of the system to see if it can work.
