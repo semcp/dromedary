@@ -15,4 +15,5 @@ dependencies = [
     "matplotlib>=3.7.0",
     "networkx>=3.0.0",
     "rich>=14.0.0",
+    "mcp[cli]>=1.9.4",
 ]

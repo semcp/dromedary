@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "email-system": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["--project", "mcp_servers/email", "run", "python", "mcp_servers/email/email_server.py"],
+      "env": {}
+    },
+    "calendar-system": {
+      "type": "stdio",
+      "command": "uv", 
+      "args": ["--project", "mcp_servers/calendar", "run", "python", "mcp_servers/calendar/calendar_server.py"],
+      "env": {}
+    },
+    "file-storage": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["--project", "mcp_servers/filestore", "run", "python", "mcp_servers/filestore/filestore_server.py"],
+      "env": {}
+    }
+  }
+} 
