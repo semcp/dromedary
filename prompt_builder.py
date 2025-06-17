@@ -144,7 +144,7 @@ class SystemPromptBuilder:
         prompt_parts.append("def query_ai_assistant(query: str, output_schema: BaseModel) -> Any:")
         prompt_parts.append('    """Queries a Large Language Model with `query` and returns the language model\'s output. It must be used to process')
         prompt_parts.append("unstructured data into structured one.")
-        prompt_parts.append("It is absolutely imperative that you use this function to parse data whose structure you don't know insted of parsing using")
+        prompt_parts.append("It is absolutely imperative that you use this function to parse data whose structure you don't know instead of parsing using")
         prompt_parts.append("regular expressions and/or")
         prompt_parts.append("string manipulation.")
         prompt_parts.append("There is no need to specify the expected output format in the query itself as the format will be specified on the side with")
