@@ -2,20 +2,21 @@ import ast
 import os
 from datetime import datetime, timedelta, date, time, timezone
 from enum import Enum
-from typing import Any, Dict, Type, Set, List, Iterable, Union
+from typing import Any, Dict, Type, Set, List, Iterable, Union, Optional
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field, EmailStr
 
-from tools import get_all_tools
-from models import available_types
+from mcp_servers.models import available_types
 from policy_engine import policy_engine, PolicyViolationError
 from capability import CapabilityValue, Capability, Source, SourceType
+from dromedary_mcp.tool_loader import MCPToolLoader
 
 
 # TODO: more configurable interpreter like the execution_trace should be enabled / disabled. 
 class PythonInterpreter:
-    def __init__(self, enable_policies=True):
+    def __init__(self, enable_policies=True, mcp_tool_loader: Optional["MCPToolLoader"] = None):
         self.enable_policies = enable_policies
+        self.mcp_tool_loader = mcp_tool_loader
         self.globals = {}
         self.tools = {}
         self.execution_trace = []  # Track actual function calls with arguments
@@ -160,28 +161,28 @@ class PythonInterpreter:
     
     def _setup_tools(self):
         """Setup tools and add them to the globals"""
-        tools = get_all_tools()
-        for tool in tools:
-            tool_name = tool.name
-            wrapped_tool = self._create_capability_wrapped_tool(tool_name, tool._run)
-            self.tools[tool_name] = wrapped_tool
-            self.globals[tool_name] = self._create_capability_value(wrapped_tool, [Source(type=SourceType.SYSTEM, identifier="builtin")])
+        if self.mcp_tool_loader:
+            available_tools = self.mcp_tool_loader.get_available_tools()
+            for tool_name in available_tools:
+                tool_function = self.mcp_tool_loader.get_tool_function(tool_name)
+                wrapped_tool = self._create_mcp_capability_wrapped_tool(tool_name, tool_function)
+                self.tools[tool_name] = wrapped_tool
+                self.globals[tool_name] = self._create_capability_value(wrapped_tool, [Source(type=SourceType.SYSTEM, identifier="mcp")])
         
         self.globals['query_ai_assistant'] = self._create_capability_value(self._query_ai_assistant, [Source(type=SourceType.SYSTEM, identifier="builtin")])
     
-    def _create_capability_wrapped_tool(self, tool_name: str, original_tool_func):
-        """Create a wrapper function that validates policies and wraps results with TOOL capabilities"""
-        def policy_validated_tool(*args, **kwargs):
+    
+    def _create_mcp_capability_wrapped_tool(self, tool_name: str, mcp_tool_func):
+        """Create a wrapper function for MCP tools that validates policies and wraps results."""
+        def mcp_policy_validated_tool(*args, **kwargs):
             unwrapped_args = [self._unwrap_value(arg) for arg in args]
             unwrapped_kwargs = {k: self._unwrap_value(v) for k, v in kwargs.items()}
             
             additional_context = {}
             
-            # Always collect capability values for all tools
             capability_values = {}
             for i, arg in enumerate(args):
                 if isinstance(arg, CapabilityValue):
-                    # note this is a hard coded arg for non-positional arguments
                     capability_values[f"arg_{i}"] = arg
             for k, v in kwargs.items():
                 if isinstance(v, CapabilityValue):
@@ -190,20 +191,19 @@ class PythonInterpreter:
             if capability_values:
                 additional_context["capability_values"] = capability_values
             
-            # TODO: file_id is a hard coded parameter for file operations. 
-            # we should make it more generic and configurable. 
             if "file_id" in unwrapped_kwargs:
                 file_id = unwrapped_kwargs["file_id"]
-                try:
-                    from tools import file_store
-                    for file in file_store.files:
-                        if file.id_ == file_id:
-                            additional_context["file_content"] = file.content
-                            break
-                except Exception:
-                    pass
+                if self.mcp_tool_loader and self.mcp_tool_loader.has_tool("get_file_by_id"):
+                    try:
+                        file_func = self.mcp_tool_loader.get_tool_function("get_file_by_id")
+                        file_data = file_func(file_id)
+                        if hasattr(file_data, 'content'):
+                            additional_context["file_content"] = file_data.content
+                        elif isinstance(file_data, dict) and 'content' in file_data:
+                            additional_context["file_content"] = file_data['content']
+                    except Exception:
+                        pass
             
-            # Only check policies if enabled
             if self.enable_policies:
                 is_allowed, violations = policy_engine.evaluate_tool_call(
                     tool_name, unwrapped_kwargs, additional_context
@@ -213,12 +213,12 @@ class PythonInterpreter:
                     violation_msg = f"Policy violation for {tool_name}: " + "; ".join(violations)
                     raise PolicyViolationError(violation_msg, violations)
             
-            result = original_tool_func(*unwrapped_args, **unwrapped_kwargs)
+            result = mcp_tool_func(*unwrapped_args, **unwrapped_kwargs)
             
             tool_source = Source(type=SourceType.TOOL, identifier=tool_name)
             return self._create_capability_value(result, [tool_source])
         
-        return policy_validated_tool
+        return mcp_policy_validated_tool
     
     def _query_ai_assistant(self, query: str, output_schema: Type[BaseModel]) -> BaseModel:
         unwrapped_query = self._unwrap_value(query)

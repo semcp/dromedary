@@ -1,28 +1,33 @@
-import os
 import asyncio
+import os
 import sys
-from typing import Dict, Any, List, Tuple
+import argparse
+from pathlib import Path
+from typing import Optional
 from dotenv import load_dotenv
 from langchain_openai import AzureChatOpenAI
+from langchain.prompts import ChatPromptTemplate
 from langgraph.prebuilt import create_react_agent
-from langchain_core.prompts import ChatPromptTemplate
-from tools import get_all_tools, reset_all_stores
-from prompt_builder import SystemPromptBuilder
-from interpreter import run_interpreter, PythonInterpreter
-from visualizer import InterpreterVisualized
-from policy_engine import PolicyViolationError
-from capability import CapabilityValue
-from rich.live import Live
 from rich.console import Console
-from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
+from rich.markdown import Markdown
+from rich.live import Live
+
+from interpreter import PythonInterpreter
+from visualizer import InterpreterVisualized
+
+from capability import CapabilityValue
+from dromedary_mcp.tool_loader import MCPToolLoader
+from prompt_builder import SystemPromptBuilder
 
 class PLLMAgent:
-    def __init__(self):
+    def __init__(self, mcp_config: Optional[str] = None):
         load_dotenv()
         self.agent = None
-        self.interpreter = InterpreterVisualized(PythonInterpreter, enable_policies=False)
+        self.mcp_config = mcp_config
+        self.mcp_tool_loader: Optional[MCPToolLoader] = None
+        self.interpreter = None
         self.security_policy_enabled = False
         self.console = Console()
         self.content_buffer = ""
@@ -44,11 +49,11 @@ class PLLMAgent:
                 api_key=os.getenv("AZURE_OPENAI_API_KEY"),
             )
             
-            tools = get_all_tools()
-            print(f"🔧 P-LLM tools: {[tool.name for tool in tools]}")
             print(f"🤖 Using model: {deployment}")
 
-            prompt_builder = SystemPromptBuilder()
+            prompt_builder = SystemPromptBuilder(
+                mcp_tool_loader=self.mcp_tool_loader
+            )
             tools_and_types_section = prompt_builder.build_prompt()
 
             # copied from CaMeL paper section H.1.
@@ -256,9 +261,39 @@ syntax."""
             print(f"❌ Failed to create agent: {e}")
             return None
     
+    async def _initialize_mcp(self):
+        """Initialize MCP tool loader and connect to servers."""
+        print("🔌 Initializing MCP connections...")
+        
+        self.mcp_tool_loader = MCPToolLoader(self.mcp_config)
+        success = await self.mcp_tool_loader.initialize()
+        
+        if success:
+            available_tools = self.mcp_tool_loader.get_available_tools()
+            connected_servers = self.mcp_tool_loader.get_connected_servers()
+            
+            if available_tools:
+                print("✅ MCP initialization successful")
+                print(f"🔧 MCP tools: {available_tools}")
+                print(f"🌐 Connected servers: {connected_servers}")
+            else:
+                print("⚠️ MCP servers connected but no tools discovered")
+            
+            self.interpreter = InterpreterVisualized(
+                lambda enable_policies=False: PythonInterpreter(
+                    enable_policies=enable_policies, 
+                    mcp_tool_loader=self.mcp_tool_loader
+                ), 
+                enable_policies=False
+            )
+        else:
+            raise RuntimeError("Failed to initialize MCP connections. MCP is required.")
+    
     async def initialize(self):
         print("Initializing P-LLM Agent for Mossaka...")
         print("-" * 60)
+        
+        await self._initialize_mcp()
         
         agent = await self.create_agent()
         if not agent:
@@ -321,15 +356,19 @@ syntax."""
         return self.content_buffer
     
     async def _execute_with_retry(self, agent, messages, response_content, max_retries=10):
+        # Check if there's actually code to execute
+        if "```python" not in response_content:
+            return None, True
+        
         for attempt in range(max_retries + 1):
             if attempt > 0:
-                reset_all_stores()
                 self.interpreter.clear_for_new_conv()
             
-            if "```python" in response_content:
-                code = response_content.split("```python")[1].split("```")[0]
-            else:
-                code = response_content
+            code = response_content.split("```python")[1].split("```")[0]
+            
+            # Skip execution if the extracted code is empty or just whitespace
+            if not code.strip():
+                return None, True
             
             result = self.interpreter.execute(code)
             
@@ -397,13 +436,16 @@ syntax."""
                 response_content = await self._get_response(agent, messages)
                 
                 if response_content and response_content != "No response generated.":
-                    result, success = await self._execute_with_retry(agent, messages, response_content)
-                    if success:
-                        print(f"{format_result(result)}")
-                    elif result["error_type"] == "policy":
-                        print(f"🚫 POLICY VIOLATION: {result['error']}")
-                    else:
-                        print(f"Error: {result}")
+                    # Only try to execute if there's actually code to execute
+                    if "```python" in response_content:
+                        result, success = await self._execute_with_retry(agent, messages, response_content)
+                        if success and result is not None:
+                            print(f"{format_result(result)}")
+                        elif not success:
+                            if hasattr(result, 'get') and result.get("error_type") == "policy":
+                                print(f"🚫 POLICY VIOLATION: {result['error']}")
+                            else:
+                                print(f"Error: {result}")
                 else:
                     print("No response generated.")
                 
@@ -416,6 +458,15 @@ syntax."""
             except Exception as e:
                 print(f"\n❌ Error: {e}")
                 print("Please try again.")
+    
+    async def shutdown(self):
+        """Shutdown the agent and clean up MCP connections."""
+        if self.mcp_tool_loader:
+            try:
+                await self.mcp_tool_loader.shutdown()
+                print("🔌 MCP connections closed")
+            except Exception as e:
+                print(f"⚠️ Error closing MCP connections: {e}")
 
 def format_result(result):
     if isinstance(result, CapabilityValue):
@@ -423,10 +474,40 @@ def format_result(result):
     else:
         return str(result)
 
-        
+def parse_args():
+    """Parse command line arguments, handling @config-file syntax."""
+    
+    config_file = None
+    
+    if len(sys.argv) > 1 and sys.argv[1].startswith('@'):
+        config_file = sys.argv[1][1:]
+        remaining_args = sys.argv[2:]
+    else:
+        remaining_args = sys.argv[1:]
+    
+    parser = argparse.ArgumentParser(description="P-LLM Agent CLI")
+    parser.add_argument("--mcp-config", type=str, help="MCP configuration file")
+    
+    args = parser.parse_args(remaining_args)
+    
+    if config_file:
+        args.mcp_config = config_file
+    
+    return args
+
 async def main():
+    agent_system = None
     try:
-        agent_system = PLLMAgent()
+        args = parse_args()
+        
+        if args.mcp_config and not os.path.exists(args.mcp_config):
+            print(f"❌ Config file not found: {args.mcp_config}")
+            print("Available config files:")
+            for config_file in Path(".").glob("**/*config*.json"):
+                print(f"  {config_file}")
+            return
+        
+        agent_system = PLLMAgent(args.mcp_config)
         agent = await agent_system.initialize()
         if agent:
             await agent_system.chat_loop(agent)
@@ -437,6 +518,9 @@ async def main():
         print("  export AZURE_OPENAI_ENDPOINT='your-endpoint-here'")
     except Exception as e:
         print(f"❌ Unexpected error: {e}")
+    finally:
+        if agent_system:
+            await agent_system.shutdown()
 
 if __name__ == "__main__":
     asyncio.run(main()) 

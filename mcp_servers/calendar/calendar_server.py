@@ -334,7 +334,7 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
     elif name == "get_current_day":
         return [types.TextContent(
             type="text",
-            text=json.dumps({"current_day": datetime.now().strftime('%Y-%m-%d')})
+            text=datetime.now().strftime('%Y-%m-%d')
         )]
     
     else:
