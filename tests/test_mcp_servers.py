@@ -207,13 +207,9 @@ class TestCalendarMCPServer(unittest.TestCase):
                     self.assertFalse(result.isError)
                     self.assertGreater(len(result.content), 0)
                     
-                    # Parse the response - it returns {"current_day": "2025-06-16"}
+                    # Parse the response - it returns "2025-06-16"
                     response_text = result.content[0].text
-                    response_data = json.loads(response_text)
-                    
-                    self.assertIn("current_day", response_data)
-                    # Verify it's a valid date format
-                    datetime.strptime(response_data["current_day"], '%Y-%m-%d')
+                    datetime.strptime(response_text, '%Y-%m-%d')
         
         asyncio.run(run_test())
     
