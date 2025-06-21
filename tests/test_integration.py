@@ -1,4 +1,3 @@
-import unittest
 import asyncio
 import tempfile
 import json
@@ -7,6 +6,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 import sys
 import shutil
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -20,20 +20,14 @@ from dromedary.policy.engine import create_policy_engine
 from dromedary.prompt_builder import SystemPromptBuilder
 
 
-class AsyncTestCase(unittest.TestCase):
-    def run_async(self, coro):
-        if asyncio.iscoroutinefunction(coro):
-            return asyncio.run(coro())
-        return coro
-
-
-class TestEndToEndMCPIntegration(AsyncTestCase):
+class TestEndToEndMCPIntegration:
     
-    def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
-        self.config_file = Path(self.temp_dir) / "test-mcp-config.json"
+    @pytest.fixture
+    def temp_config(self):
+        temp_dir = tempfile.mkdtemp()
+        config_file = Path(temp_dir) / "test-mcp-config.json"
         
-        self.test_config = {
+        test_config = {
             "mcpServers": {
                 "email-server": {
                     "type": "stdio",
@@ -56,16 +50,16 @@ class TestEndToEndMCPIntegration(AsyncTestCase):
             }
         }
         
-        with open(self.config_file, 'w') as f:
-            json.dump(self.test_config, f)
-    
-    def tearDown(self):
-        if self.config_file.exists():
-            self.config_file.unlink()
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
+        with open(config_file, 'w') as f:
+            json.dump(test_config, f)
+        
+        yield config_file, temp_dir
+        
+        if config_file.exists():
+            config_file.unlink()
+        shutil.rmtree(temp_dir, ignore_errors=True)
     
     def _create_mock_tool_loader(self):
-        """Create a mock tool loader for testing."""
         mock_manager = Mock(spec=MCPManager)
         mock_manager.get_all_tools.return_value = {
             "send_email": Mock(
@@ -90,78 +84,72 @@ class TestEndToEndMCPIntegration(AsyncTestCase):
         
         return MCPToolLoader(mock_mapper, mock_manager)
     
-    def test_interpreter_mcp_integration(self):
-        async def _test():
-            with patch('dromedary.interpreter.init_chat_model') as mock_init_chat:
-                mock_init_chat.return_value = Mock()
-                
-                tool_loader = self._create_mock_tool_loader()
-                
-                interpreter = PythonInterpreter(
-                    enable_policies=False,
-                    mcp_tool_loader=tool_loader
-                )
-                
-                self.assertIsNotNone(interpreter.mcp_tool_loader)
-                
-                available_tools = tool_loader.get_available_tools()
-                self.assertIsInstance(available_tools, list)
-        
-        self.run_async(_test)
+    @pytest.mark.asyncio
+    async def test_interpreter_mcp_integration(self):
+        with patch('dromedary.interpreter.init_chat_model') as mock_init_chat:
+            mock_init_chat.return_value = Mock()
+            
+            tool_loader = self._create_mock_tool_loader()
+            
+            interpreter = PythonInterpreter(
+                enable_policies=False,
+                mcp_tool_loader=tool_loader
+            )
+            
+            assert interpreter.mcp_tool_loader is not None
+            
+            available_tools = tool_loader.get_available_tools()
+            assert isinstance(available_tools, list)
     
-    def test_interpreter_mcp_tool_execution(self):
-        async def _test():
-            with patch('dromedary.interpreter.init_chat_model') as mock_init_chat:
-                mock_init_chat.return_value = Mock()
-                
-                tool_loader = self._create_mock_tool_loader()
-                
-                interpreter = PythonInterpreter(
-                    enable_policies=False,
-                    mcp_tool_loader=tool_loader
-                )
-                
-                self.assertTrue(tool_loader.has_tool("send_email"))
-                
-                tool_func = tool_loader.get_tool_function("send_email")
-                self.assertIsNotNone(tool_func)
-        
-        self.run_async(_test)
+    @pytest.mark.asyncio
+    async def test_interpreter_mcp_tool_execution(self):
+        with patch('dromedary.interpreter.init_chat_model') as mock_init_chat:
+            mock_init_chat.return_value = Mock()
+            
+            tool_loader = self._create_mock_tool_loader()
+            
+            interpreter = PythonInterpreter(
+                enable_policies=False,
+                mcp_tool_loader=tool_loader
+            )
+            
+            assert tool_loader.has_tool("send_email")
+            
+            tool_func = tool_loader.get_tool_function("send_email")
+            assert tool_func is not None
     
-    def test_interpreter_mcp_with_policies(self):
-        async def _test():
-            with patch('dromedary.interpreter.init_chat_model') as mock_init_chat:
-                mock_init_chat.return_value = Mock()
-                
-                tool_loader = self._create_mock_tool_loader()
-                
-                interpreter = PythonInterpreter(
-                    enable_policies=True,
-                    mcp_tool_loader=tool_loader
-                )
-                
-                self.assertTrue(interpreter.enable_policies)
-        
-        self.run_async(_test)
+    @pytest.mark.asyncio
+    async def test_interpreter_mcp_with_policies(self):
+        with patch('dromedary.interpreter.init_chat_model') as mock_init_chat:
+            mock_init_chat.return_value = Mock()
+            
+            tool_loader = self._create_mock_tool_loader()
+            
+            interpreter = PythonInterpreter(
+                enable_policies=True,
+                mcp_tool_loader=tool_loader
+            )
+            
+            assert interpreter.enable_policies
     
-    def test_p_llm_agent_mcp_initialization(self):
-        async def _test():
-            with patch.dict(os.environ, {
-                'AZURE_OPENAI_API_KEY': 'test-key',
-                'AZURE_OPENAI_ENDPOINT': 'https://test.openai.azure.com/',
-                'AZURE_OPENAI_DEPLOYMENT': 'test-deployment'
-            }):
-                with patch('dromedary.agent.create_mcp_tool_loader') as mock_create_loader:
-                    mock_create_loader.return_value = self._create_mock_tool_loader()
-                    
-                    agent = PLLMAgent(mcp_config=str(self.config_file), policy_config="policies/policies.yaml")
-                    self.assertIsNone(agent.mcp_tool_loader)
-                    
-                    await agent._initialize_mcp()
-                    
-                    self.assertIsNotNone(agent.mcp_tool_loader)
+    @pytest.mark.asyncio
+    async def test_p_llm_agent_mcp_initialization(self, temp_config):
+        config_file, temp_dir = temp_config
         
-        self.run_async(_test)
+        with patch.dict(os.environ, {
+            'AZURE_OPENAI_API_KEY': 'test-key',
+            'AZURE_OPENAI_ENDPOINT': 'https://test.openai.azure.com/',
+            'AZURE_OPENAI_DEPLOYMENT': 'test-deployment'
+        }):
+            with patch('dromedary.agent.create_mcp_tool_loader') as mock_create_loader:
+                mock_create_loader.return_value = self._create_mock_tool_loader()
+                
+                agent = PLLMAgent(mcp_config=str(config_file), policy_config="policies/policies.yaml")
+                assert agent.mcp_tool_loader is None
+                
+                await agent._initialize_mcp()
+                
+                assert agent.mcp_tool_loader is not None
     
     def test_prompt_builder_mcp_integration(self):
         mock_tool_loader = self._create_mock_tool_loader()
@@ -169,165 +157,138 @@ class TestEndToEndMCPIntegration(AsyncTestCase):
         builder = SystemPromptBuilder(mcp_tool_loader=mock_tool_loader)
         
         prompt = builder.build_prompt()
-        self.assertIsInstance(prompt, str)
-        self.assertIn("Available Tools", prompt)
+        assert isinstance(prompt, str)
+        assert "Available Tools" in prompt
     
-    def test_policy_engine_with_mcp_tools(self):
-        async def _test():
-            with patch('dromedary.interpreter.init_chat_model') as mock_init_chat:
-                mock_init_chat.return_value = Mock()
-                
-                tool_loader = self._create_mock_tool_loader()
-                
-                interpreter = PythonInterpreter(
-                    enable_policies=True,
-                    mcp_tool_loader=tool_loader
-                )
-                
-                self.assertTrue(interpreter.enable_policies)
-                
-                policy_engine = create_policy_engine("policies/policies.yaml")
-                
-                is_allowed, violations = policy_engine.evaluate_tool_call(
-                    "send_email",
-                    {"to": "test@example.com", "subject": "test"},
-                    {}
-                )
-                
-                self.assertIsInstance(is_allowed, bool)
-        
-        self.run_async(_test)
+    @pytest.mark.asyncio
+    async def test_policy_engine_with_mcp_tools(self):
+        with patch('dromedary.interpreter.init_chat_model') as mock_init_chat:
+            mock_init_chat.return_value = Mock()
+            
+            tool_loader = self._create_mock_tool_loader()
+            
+            interpreter = PythonInterpreter(
+                enable_policies=True,
+                mcp_tool_loader=tool_loader
+            )
+            
+            assert interpreter.enable_policies
+            
+            policy_engine = create_policy_engine("policies/policies.yaml")
+            
+            is_allowed, violations = policy_engine.evaluate_tool_call(
+                "send_email",
+                {"to": "test@example.com", "subject": "test"},
+                {}
+            )
+            
+            assert isinstance(is_allowed, bool)
     
-    def test_full_workflow_with_mcp_servers(self):
-        async def _test():
-            with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
-                mock_create_loader.return_value = self._create_mock_tool_loader()
-                
-                tool_loader = mock_create_loader.return_value
-                
-                available_tools = tool_loader.get_available_tools()
-                self.assertIsInstance(available_tools, list)
-                
-                connected_servers = tool_loader.get_connected_servers()
-                self.assertIsInstance(connected_servers, list)
-        
-        self.run_async(_test)
+    @pytest.mark.asyncio
+    async def test_full_workflow_with_mcp_servers(self):
+        with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
+            mock_create_loader.return_value = self._create_mock_tool_loader()
+            
+            tool_loader = mock_create_loader.return_value
+            
+            available_tools = tool_loader.get_available_tools()
+            assert isinstance(available_tools, list)
+            
+            connected_servers = tool_loader.get_connected_servers()
+            assert isinstance(connected_servers, list)
     
     def test_mcp_type_converter_integration(self):
         converter = MCPTypeConverter()
         
-        result = converter.python_args_to_mcp([], {"to": "test@example.com"}, None)
-        self.assertIsInstance(result, dict)
+        result = converter.python_args_to_mcp([], {"to": "test@example.com"})
+        assert isinstance(result, dict)
         
         mock_content = [Mock(text="test result")]
         result = converter.mcp_result_to_python(mock_content)
-        self.assertEqual(result, "test result")
+        assert result == "test result"
     
-    def test_mcp_error_handling_integration(self):
-        async def _test():
-            with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
-                mock_create_loader.side_effect = RuntimeError("Failed to connect to any MCP servers.")
-                
-                try:
-                    tool_loader = mock_create_loader()
-                    self.fail("Should have raised an exception")
-                except RuntimeError as e:
-                    self.assertIn("Failed to connect", str(e))
-        
-        self.run_async(_test)
-    
-    def test_mcp_server_lifecycle_management(self):
-        async def _test():
-            with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
-                mock_tool_loader = self._create_mock_tool_loader()
-                mock_create_loader.return_value = mock_tool_loader
-                
-                tool_loader = mock_create_loader()
-                
-                available_tools = tool_loader.get_available_tools()
-                self.assertIsInstance(available_tools, list)
-        
-        self.run_async(_test)
-
-
-class TestMCPIntegrationEdgeCases(AsyncTestCase):
-    
-    def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
-    
-    def tearDown(self):
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
-    
-    def test_invalid_config_handling(self):
-        async def _test():
-            with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
-                mock_create_loader.side_effect = RuntimeError("Config file not found")
-                
-                try:
-                    tool_loader = mock_create_loader("nonexistent-file.json")
-                    self.fail("Should have raised an exception")
-                except RuntimeError as e:
-                    self.assertIn("Config file not found", str(e))
-        
-        self.run_async(_test)
-    
-    def test_missing_config_file(self):
-        async def _test():
-            nonexistent_file = Path(self.temp_dir) / "nonexistent.json"
+    @pytest.mark.asyncio
+    async def test_mcp_error_handling_integration(self):
+        with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
+            mock_create_loader.side_effect = RuntimeError("Failed to connect to any MCP servers.")
             
-            with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
-                mock_create_loader.side_effect = RuntimeError("Config file not found")
-                
-                try:
-                    tool_loader = mock_create_loader(str(nonexistent_file))
-                    self.fail("Should have raised an exception")
-                except RuntimeError as e:
-                    self.assertIn("Config file not found", str(e))
-        
-        self.run_async(_test)
+            with pytest.raises(RuntimeError, match="Failed to connect"):
+                tool_loader = mock_create_loader()
     
-    def test_policy_violations_with_mcp_tools(self):
-        async def _test():
-            config_file = Path(self.temp_dir) / "policy-test-config.json"
-            test_config = {
-                "mcpServers": {
-                    "email-server": {
-                        "type": "stdio",
-                        "command": "python",
-                        "args": ["email_server.py"],
-                        "env": {}
-                    }
+    @pytest.mark.asyncio
+    async def test_mcp_server_lifecycle_management(self):
+        with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
+            mock_tool_loader = self._create_mock_tool_loader()
+            mock_create_loader.return_value = mock_tool_loader
+            
+            tool_loader = mock_create_loader()
+            
+            available_tools = tool_loader.get_available_tools()
+            assert isinstance(available_tools, list)
+
+
+class TestMCPIntegrationEdgeCases:
+    
+    @pytest.fixture
+    def temp_dir(self):
+        temp_dir = tempfile.mkdtemp()
+        yield temp_dir
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    
+    @pytest.mark.asyncio
+    async def test_invalid_config_handling(self):
+        with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
+            mock_create_loader.side_effect = RuntimeError("Config file not found")
+            
+            with pytest.raises(RuntimeError, match="Config file not found"):
+                tool_loader = mock_create_loader("nonexistent-file.json")
+    
+    @pytest.mark.asyncio
+    async def test_missing_config_file(self, temp_dir):
+        nonexistent_file = Path(temp_dir) / "nonexistent.json"
+        
+        with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
+            mock_create_loader.side_effect = RuntimeError("Config file not found")
+            
+            with pytest.raises(RuntimeError, match="Config file not found"):
+                tool_loader = mock_create_loader(str(nonexistent_file))
+    
+    @pytest.mark.asyncio
+    async def test_policy_violations_with_mcp_tools(self, temp_dir):
+        config_file = Path(temp_dir) / "policy-test-config.json"
+        test_config = {
+            "mcpServers": {
+                "email-server": {
+                    "type": "stdio",
+                    "command": "python",
+                    "args": ["email_server.py"],
+                    "env": {}
                 }
             }
-            
-            with open(config_file, 'w') as f:
-                json.dump(test_config, f)
-            
-            with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
-                mock_manager = Mock(spec=MCPManager)
-                mock_manager.get_all_tools.return_value = {"send_email": Mock()}
-                mock_manager.get_connected_servers.return_value = ["email-server"]
-                
-                mock_mapper = Mock(spec=MCPToolMapper)
-                mock_mapper.get_all_functions.return_value = {"send_email": Mock()}
-                
-                mock_tool_loader = MCPToolLoader(mock_mapper, mock_manager)
-                mock_create_loader.return_value = mock_tool_loader
-                
-                tool_loader = mock_create_loader(str(config_file))
-                
-                policy_engine = create_policy_engine("policies/policies.yaml")
-                
-                is_allowed, violations = policy_engine.evaluate_tool_call(
-                    "send_email",
-                    {"to": "external@badsite.com", "subject": "test"},
-                    {}
-                )
-                
-                self.assertIsInstance(is_allowed, bool)
+        }
         
-        self.run_async(_test)
-
-
-if __name__ == '__main__':
-    unittest.main() 
+        with open(config_file, 'w') as f:
+            json.dump(test_config, f)
+        
+        with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
+            mock_manager = Mock(spec=MCPManager)
+            mock_manager.get_all_tools.return_value = {"send_email": Mock()}
+            mock_manager.get_connected_servers.return_value = ["email-server"]
+            
+            mock_mapper = Mock(spec=MCPToolMapper)
+            mock_mapper.get_all_functions.return_value = {"send_email": Mock()}
+            
+            mock_tool_loader = MCPToolLoader(mock_mapper, mock_manager)
+            mock_create_loader.return_value = mock_tool_loader
+            
+            tool_loader = mock_create_loader(str(config_file))
+            
+            policy_engine = create_policy_engine("policies/policies.yaml")
+            
+            is_allowed, violations = policy_engine.evaluate_tool_call(
+                "send_email",
+                {"to": "external@badsite.com", "subject": "test"},
+                {}
+            )
+            
+            assert isinstance(is_allowed, bool) 

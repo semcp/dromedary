@@ -5,4 +5,4 @@ set -e
 cd "$(dirname "$0")/.."
 
 echo "Running tests..."
-uv run pytest tests/ -v 
+uv run pytest tests/ -v --tb=short

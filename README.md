@@ -45,6 +45,12 @@ For example, if you want to use the MCP config file in the `mcp_servers` directo
 uv run p_llm_agent.py @mcp_servers/mcp-servers-config.json
 ```
 
+### Run Tests
+
+```bash
+./scripts/run_tests.sh
+```
+
 ## Example
 
 One of critical component of Dromedary is the Python interpreter for executing Agent's plan. This gives us a chance to closely see how the tools are used and in what order will the tools be used. It will also give us the flexibility to add taint analysis, RBAC etc. to the system to make it more secure. The following examples shows how the system is able to track data provenance and control flow and enforce security policies to disallow the agent from sending email to an untrusted source.

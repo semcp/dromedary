@@ -6,7 +6,6 @@ from typing import Any, Dict, Type, Optional
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field, EmailStr
 
-from .models import available_types
 from .policy.engine import create_policy_engine, PolicyViolationError, PolicyEngine
 from .capability import CapabilityValue
 from .provenance import ProvenanceManager
@@ -93,9 +92,6 @@ class PythonInterpreter:
         
         for name, value in builtins.items():
             self.globals[name] = self.provenance.from_system(value, "builtin")
-        
-        for model_type in available_types():
-            self.globals[model_type.__name__] = self.provenance.from_system(model_type, "builtin")
     
     def _wrapped_print(self, *args, **kwargs):
         """Wrapped print function that handles CapabilityValue objects"""
