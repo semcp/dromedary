@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch, AsyncMock
 import shutil
 
-from dromedary_mcp.client import MCPServerConfig, ServerConnection, MCPClientManager
+from dromedary.mcp.client import MCPServerConfig, ServerConnection, MCPClientManager
 
 class AsyncTestCase(unittest.TestCase):
     """Base class for async test cases."""
@@ -87,7 +87,7 @@ class TestMCPClientManager(AsyncTestCase):
     
     def test_load_config_success(self):
         """Test successful configuration loading."""
-        from dromedary_mcp.client import load_mcp_configs_from_file
+        from dromedary.mcp.client import load_mcp_configs_from_file
         
         configs = load_mcp_configs_from_file(str(self.config_file))
         
@@ -107,14 +107,14 @@ class TestMCPClientManager(AsyncTestCase):
     
     def test_load_config_file_not_found(self):
         """Test configuration loading with missing file."""
-        from dromedary_mcp.client import load_mcp_configs_from_file
+        from dromedary.mcp.client import load_mcp_configs_from_file
         
         with self.assertRaises(FileNotFoundError):
             load_mcp_configs_from_file("nonexistent-config.json")
     
     def test_load_config_invalid_json(self):
         """Test configuration loading with invalid JSON."""
-        from dromedary_mcp.client import load_mcp_configs_from_file
+        from dromedary.mcp.client import load_mcp_configs_from_file
         
         invalid_config_file = Path(self.temp_dir) / "invalid-config.json"
         with open(invalid_config_file, 'w') as f:
@@ -127,7 +127,7 @@ class TestMCPClientManager(AsyncTestCase):
     
     def test_load_config_empty_servers(self):
         """Test configuration loading with empty mcpServers."""
-        from dromedary_mcp.client import load_mcp_configs_from_file
+        from dromedary.mcp.client import load_mcp_configs_from_file
         
         empty_config = {"mcpServers": {}}
         empty_config_file = Path(self.temp_dir) / "empty-config.json"
@@ -142,7 +142,7 @@ class TestMCPClientManager(AsyncTestCase):
     
     def test_load_config_missing_mcp_servers(self):
         """Test configuration loading without mcpServers key."""
-        from dromedary_mcp.client import load_mcp_configs_from_file
+        from dromedary.mcp.client import load_mcp_configs_from_file
         
         config_without_servers = {"someOtherConfig": "value"}
         config_file = Path(self.temp_dir) / "no-servers-config.json"
@@ -155,9 +155,9 @@ class TestMCPClientManager(AsyncTestCase):
         
         config_file.unlink()
     
-    @patch('dromedary_mcp.client.ClientSession')
-    @patch('dromedary_mcp.client.StdioServerParameters')
-    @patch('dromedary_mcp.client.stdio_client')
+    @patch('dromedary.mcp.client.ClientSession')
+    @patch('dromedary.mcp.client.StdioServerParameters')
+    @patch('dromedary.mcp.client.stdio_client')
     def test_initialize_server_success(self, mock_stdio_client, mock_params, mock_session):
         """Test successful server initialization."""
         
@@ -212,9 +212,9 @@ class TestMCPClientManager(AsyncTestCase):
         mock_session_instance.initialize.assert_called_once()
         mock_session_instance.list_tools.assert_called_once()
     
-    @patch('dromedary_mcp.client.ClientSession')
-    @patch('dromedary_mcp.client.StdioServerParameters')
-    @patch('dromedary_mcp.client.stdio_client')
+    @patch('dromedary.mcp.client.ClientSession')
+    @patch('dromedary.mcp.client.StdioServerParameters')
+    @patch('dromedary.mcp.client.stdio_client')
     def test_initialize_server_failure(self, mock_stdio_client, mock_params, mock_session):
         """Test server initialization failure."""
         
@@ -247,8 +247,8 @@ class TestMCPClientManager(AsyncTestCase):
         
         # Simulate MCP SDK not available
         async def _test():
-            with patch('dromedary_mcp.client.stdio_client', None):
-                with patch('dromedary_mcp.client.ClientSession', None):
+            with patch('dromedary.mcp.client.stdio_client', None):
+                with patch('dromedary.mcp.client.ClientSession', None):
                     # Should gracefully handle missing SDK and return empty list
                     successful_servers = await manager.initialize_from_config()
                     self.assertEqual(successful_servers, [])
@@ -550,9 +550,9 @@ class TestMCPClientManagerIntegration(AsyncTestCase):
             self.config_file.unlink()
         os.rmdir(self.temp_dir)
     
-    @patch('dromedary_mcp.client.ClientSession')
-    @patch('dromedary_mcp.client.StdioServerParameters')
-    @patch('dromedary_mcp.client.stdio_client')
+    @patch('dromedary.mcp.client.ClientSession')
+    @patch('dromedary.mcp.client.StdioServerParameters')
+    @patch('dromedary.mcp.client.stdio_client')
     def test_full_lifecycle(self, mock_stdio_client, mock_params, mock_session):
         """Test full server lifecycle: initialize, use, shutdown."""
         # Setup comprehensive mocks

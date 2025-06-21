@@ -6,12 +6,12 @@ from typing import Any, Dict, Type, Optional
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field, EmailStr
 
-from mcp_servers.models import available_types
-from policy_engine import PolicyEngine, PolicyViolationError
-from capability import CapabilityValue
-from provenance import ProvenanceManager
-from executor import NodeExecutor
-from dromedary_mcp.tool_loader import MCPToolLoader
+from .models import available_types
+from .policy.engine import create_policy_engine, PolicyViolationError, PolicyEngine
+from .capability import CapabilityValue
+from .provenance import ProvenanceManager
+from .executor import NodeExecutor
+from .mcp.tool_loader import MCPToolLoader
 
 
 class PythonInterpreter:
@@ -20,7 +20,7 @@ class PythonInterpreter:
                  mcp_tool_loader: Optional["MCPToolLoader"] = None, 
                  policy_engine: Optional[PolicyEngine] = None):
         self.enable_policies = enable_policies
-        self.policy_engine = policy_engine or PolicyEngine()
+        self.policy_engine = policy_engine or create_policy_engine("policies/policies.yaml")
         self.mcp_tool_loader = mcp_tool_loader
         self.globals = {}
         self.tools = {}

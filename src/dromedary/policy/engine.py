@@ -3,7 +3,7 @@ import yaml
 from typing import Dict, List, Any, Optional, Tuple
 import logging
 from pathlib import Path
-from policies import Policy, EmailPolicy, CalendarPolicy, FilePolicy
+from .loader import Policy, EmailPolicy, CalendarPolicy, FilePolicy
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class PolicyEngine:
     and positional fallbacks (arg_0, arg_1, etc.) since the interpreter passes positional 
     arguments with generic names.
     """
-    def __init__(self, policies_dir: str = "policies"):
+    def __init__(self, policies_dir: str):
         self.policies_dir = Path(policies_dir)
         self.policies_config = {}
         self.policy_map = {}
@@ -29,7 +29,7 @@ class PolicyEngine:
     
     def _load_policies(self):
         """Load policy rules from YAML configuration file"""
-        config_file = self.policies_dir / "policies.yaml"
+        config_file = self.policies_dir
         
         if config_file.exists():
             try:
@@ -80,10 +80,5 @@ class PolicyEngine:
         return is_allowed, violations
     
 
-def create_policy_engine() -> PolicyEngine:
-    """Factory function to create a policy engine instance"""
-    policies_path = Path(__file__).parent / "policies"
-    return PolicyEngine(str(policies_path))
-
-# Backward compatibility for existing tests
-policy_engine = create_policy_engine() 
+def create_policy_engine(policies_dir: str) -> PolicyEngine:
+    return PolicyEngine(policies_dir)

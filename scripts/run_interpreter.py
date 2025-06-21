@@ -10,10 +10,10 @@ from pathlib import Path
 from unittest.mock import patch, Mock
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from interpreter import PythonInterpreter
-from dromedary_mcp import create_mcp_tool_loader
+from src.dromedary.interpreter import PythonInterpreter
+from src.dromedary.mcp import create_mcp_tool_loader
 
 async def run_interpreter():
     """Run interpreter with MCP tools."""
@@ -43,7 +43,7 @@ async def run_interpreter():
     print(f"Connected servers: {connected_servers}")
     
     # Create interpreter with AI assistant mocked
-    with patch('interpreter.init_chat_model') as mock_init_chat:
+    with patch('src.dromedary.interpreter.init_chat_model') as mock_init_chat:
         mock_init_chat.return_value = Mock()
         
         interpreter = PythonInterpreter(enable_policies=False, mcp_tool_loader=tool_loader)

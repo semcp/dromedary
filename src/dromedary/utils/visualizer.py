@@ -6,7 +6,7 @@ matplotlib.use('MacOSX')
 import matplotlib.pyplot as plt
 import networkx as nx
 from typing import Dict, Any, List
-from capability import CapabilityValue, Source, SourceType
+from ..capability import CapabilityValue, Source, SourceType
 
 
 class DependencyGraphVisualizer:

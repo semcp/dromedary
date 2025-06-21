@@ -10,7 +10,7 @@ from pydantic import BaseModel
 # Add the project root to path 
 sys.path.insert(0, os.path.abspath('.'))
 
-from dromedary_mcp.mcp_types import MCPTypeConverter
+from dromedary.mcp.types import MCPTypeConverter
 
 
 class UserModel(BaseModel):

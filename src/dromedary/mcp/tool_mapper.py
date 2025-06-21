@@ -6,8 +6,8 @@ import logging
 from typing import Dict, Any, Callable
 from functools import wraps
 
-from .mcp_manager import MCPManager
-from .mcp_types import MCPTypeConverter
+from .manager import MCPManager
+from .types import MCPTypeConverter
 
 logger = logging.getLogger(__name__)
 

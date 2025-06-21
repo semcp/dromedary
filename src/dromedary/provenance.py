@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Union, Iterable
-from capability import CapabilityValue, Capability, Source, SourceType
+from .capability import CapabilityValue, Capability, Source, SourceType
 
 
 class ProvenanceManager:

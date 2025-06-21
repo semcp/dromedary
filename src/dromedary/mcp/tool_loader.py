@@ -6,7 +6,7 @@ import logging
 from typing import Dict, Callable, Any, List, Optional
 
 from .tool_mapper import MCPToolMapper
-from .mcp_manager import MCPManager
+from .manager import MCPManager
 
 logger = logging.getLogger(__name__)
 

@@ -4,19 +4,20 @@ import tempfile
 import json
 import os
 from pathlib import Path
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
-from typing import Dict, Any, List
+from unittest.mock import Mock, patch
 import sys
 import shutil
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dromedary_mcp import create_mcp_tool_loader, MCPManager, MCPToolMapper, MCPToolLoader
-from dromedary_mcp.mcp_types import MCPTypeConverter
-from interpreter import PythonInterpreter
-from p_llm_agent import PLLMAgent
-from policy_engine import PolicyEngine, PolicyViolationError
-from prompt_builder import SystemPromptBuilder
+from dromedary.mcp.manager import MCPManager
+from dromedary.mcp.tool_mapper import MCPToolMapper
+from dromedary.mcp.tool_loader import MCPToolLoader
+from dromedary.mcp.types import MCPTypeConverter
+from dromedary.interpreter import PythonInterpreter
+from dromedary.agent import PLLMAgent
+from dromedary.policy.engine import create_policy_engine
+from dromedary.prompt_builder import SystemPromptBuilder
 
 
 class AsyncTestCase(unittest.TestCase):
@@ -91,7 +92,7 @@ class TestEndToEndMCPIntegration(AsyncTestCase):
     
     def test_interpreter_mcp_integration(self):
         async def _test():
-            with patch('interpreter.init_chat_model') as mock_init_chat:
+            with patch('dromedary.interpreter.init_chat_model') as mock_init_chat:
                 mock_init_chat.return_value = Mock()
                 
                 tool_loader = self._create_mock_tool_loader()
@@ -110,7 +111,7 @@ class TestEndToEndMCPIntegration(AsyncTestCase):
     
     def test_interpreter_mcp_tool_execution(self):
         async def _test():
-            with patch('interpreter.init_chat_model') as mock_init_chat:
+            with patch('dromedary.interpreter.init_chat_model') as mock_init_chat:
                 mock_init_chat.return_value = Mock()
                 
                 tool_loader = self._create_mock_tool_loader()
@@ -129,7 +130,7 @@ class TestEndToEndMCPIntegration(AsyncTestCase):
     
     def test_interpreter_mcp_with_policies(self):
         async def _test():
-            with patch('interpreter.init_chat_model') as mock_init_chat:
+            with patch('dromedary.interpreter.init_chat_model') as mock_init_chat:
                 mock_init_chat.return_value = Mock()
                 
                 tool_loader = self._create_mock_tool_loader()
@@ -150,10 +151,10 @@ class TestEndToEndMCPIntegration(AsyncTestCase):
                 'AZURE_OPENAI_ENDPOINT': 'https://test.openai.azure.com/',
                 'AZURE_OPENAI_DEPLOYMENT': 'test-deployment'
             }):
-                with patch('p_llm_agent.create_mcp_tool_loader') as mock_create_loader:
+                with patch('dromedary.agent.create_mcp_tool_loader') as mock_create_loader:
                     mock_create_loader.return_value = self._create_mock_tool_loader()
                     
-                    agent = PLLMAgent(mcp_config=str(self.config_file))
+                    agent = PLLMAgent(mcp_config=str(self.config_file), policy_config="policies/policies.yaml")
                     self.assertIsNone(agent.mcp_tool_loader)
                     
                     await agent._initialize_mcp()
@@ -173,7 +174,7 @@ class TestEndToEndMCPIntegration(AsyncTestCase):
     
     def test_policy_engine_with_mcp_tools(self):
         async def _test():
-            with patch('interpreter.init_chat_model') as mock_init_chat:
+            with patch('dromedary.interpreter.init_chat_model') as mock_init_chat:
                 mock_init_chat.return_value = Mock()
                 
                 tool_loader = self._create_mock_tool_loader()
@@ -185,7 +186,7 @@ class TestEndToEndMCPIntegration(AsyncTestCase):
                 
                 self.assertTrue(interpreter.enable_policies)
                 
-                from policy_engine import policy_engine
+                policy_engine = create_policy_engine("policies/policies.yaml")
                 
                 is_allowed, violations = policy_engine.evaluate_tool_call(
                     "send_email",
@@ -199,7 +200,7 @@ class TestEndToEndMCPIntegration(AsyncTestCase):
     
     def test_full_workflow_with_mcp_servers(self):
         async def _test():
-            with patch('dromedary_mcp.create_mcp_tool_loader') as mock_create_loader:
+            with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
                 mock_create_loader.return_value = self._create_mock_tool_loader()
                 
                 tool_loader = mock_create_loader.return_value
@@ -224,7 +225,7 @@ class TestEndToEndMCPIntegration(AsyncTestCase):
     
     def test_mcp_error_handling_integration(self):
         async def _test():
-            with patch('dromedary_mcp.create_mcp_tool_loader') as mock_create_loader:
+            with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
                 mock_create_loader.side_effect = RuntimeError("Failed to connect to any MCP servers.")
                 
                 try:
@@ -237,7 +238,7 @@ class TestEndToEndMCPIntegration(AsyncTestCase):
     
     def test_mcp_server_lifecycle_management(self):
         async def _test():
-            with patch('dromedary_mcp.create_mcp_tool_loader') as mock_create_loader:
+            with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
                 mock_tool_loader = self._create_mock_tool_loader()
                 mock_create_loader.return_value = mock_tool_loader
                 
@@ -259,7 +260,7 @@ class TestMCPIntegrationEdgeCases(AsyncTestCase):
     
     def test_invalid_config_handling(self):
         async def _test():
-            with patch('dromedary_mcp.create_mcp_tool_loader') as mock_create_loader:
+            with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
                 mock_create_loader.side_effect = RuntimeError("Config file not found")
                 
                 try:
@@ -274,7 +275,7 @@ class TestMCPIntegrationEdgeCases(AsyncTestCase):
         async def _test():
             nonexistent_file = Path(self.temp_dir) / "nonexistent.json"
             
-            with patch('dromedary_mcp.create_mcp_tool_loader') as mock_create_loader:
+            with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
                 mock_create_loader.side_effect = RuntimeError("Config file not found")
                 
                 try:
@@ -302,7 +303,7 @@ class TestMCPIntegrationEdgeCases(AsyncTestCase):
             with open(config_file, 'w') as f:
                 json.dump(test_config, f)
             
-            with patch('dromedary_mcp.create_mcp_tool_loader') as mock_create_loader:
+            with patch('dromedary.mcp.create_mcp_tool_loader') as mock_create_loader:
                 mock_manager = Mock(spec=MCPManager)
                 mock_manager.get_all_tools.return_value = {"send_email": Mock()}
                 mock_manager.get_connected_servers.return_value = ["email-server"]
@@ -315,7 +316,7 @@ class TestMCPIntegrationEdgeCases(AsyncTestCase):
                 
                 tool_loader = mock_create_loader(str(config_file))
                 
-                from policy_engine import policy_engine
+                policy_engine = create_policy_engine("policies/policies.yaml")
                 
                 is_allowed, violations = policy_engine.evaluate_tool_call(
                     "send_email",

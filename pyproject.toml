@@ -1,5 +1,9 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
-name = "Dromedary"
+name = "dromedary"
 version = "0.1.0"
 description = "Dromedary is a one-humped Camel. It is my replication of the CaMeL system from a Google DeepMind"
 readme = "README.md"
@@ -18,3 +22,9 @@ dependencies = [
     "mcp[cli]>=1.9.4",
     "pyyaml>=6.0.2",
 ]
+
+[project.scripts]
+dromedary-agent = "dromedary.agent:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dromedary"]

@@ -5,8 +5,8 @@ from enum import Enum
 from typing import Any, Dict, List, Union, Optional
 from pydantic import BaseModel, Field, EmailStr
 
-from capability import CapabilityValue
-from provenance import ProvenanceManager
+from .capability import CapabilityValue
+from .provenance import ProvenanceManager
 
 
 class NodeExecutor(ast.NodeVisitor):

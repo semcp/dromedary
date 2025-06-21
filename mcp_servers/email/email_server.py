@@ -9,10 +9,11 @@ from dataclasses import dataclass
 import sys
 from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.append(str(Path(__file__).parent.parent))
+# Add project root to path for imports
+project_root = Path(__file__).parent.parent.parent
+sys.path.append(str(project_root / "src"))
 
-from models import Email, EmailStatus, EmailContact
+from dromedary.models import Email, EmailStatus, EmailContact
 
 # MCP imports
 from mcp.server.models import InitializationOptions
