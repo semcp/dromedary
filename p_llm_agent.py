@@ -18,7 +18,7 @@ from interpreter import PythonInterpreter
 from visualizer import InterpreterVisualized
 
 from capability import CapabilityValue
-from dromedary_mcp.tool_loader import MCPToolLoader
+from dromedary_mcp import create_mcp_tool_loader
 from prompt_builder import SystemPromptBuilder
 
 class PLLMAgent:
@@ -265,10 +265,8 @@ syntax."""
         """Initialize MCP tool loader and connect to servers."""
         print("🔌 Initializing MCP connections...")
         
-        self.mcp_tool_loader = MCPToolLoader(self.mcp_config)
-        success = await self.mcp_tool_loader.initialize()
-        
-        if success:
+        try:
+            self.mcp_tool_loader = create_mcp_tool_loader(self.mcp_config)
             available_tools = self.mcp_tool_loader.get_available_tools()
             connected_servers = self.mcp_tool_loader.get_connected_servers()
             
@@ -286,7 +284,8 @@ syntax."""
                 ), 
                 enable_policies=False
             )
-        else:
+        except Exception as e:
+            print(f"MCP initialization failed: {e}")
             raise RuntimeError("Failed to initialize MCP connections. MCP is required.")
     
     async def initialize(self):

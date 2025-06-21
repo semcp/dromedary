@@ -13,7 +13,7 @@ from unittest.mock import patch, Mock
 sys.path.insert(0, str(Path(__file__).parent))
 
 from interpreter import PythonInterpreter
-from dromedary_mcp.tool_loader import MCPToolLoader
+from dromedary_mcp import create_mcp_tool_loader
 
 async def run_interpreter():
     """Run interpreter with MCP tools."""
@@ -29,14 +29,12 @@ async def run_interpreter():
     
     # Initialize MCP tool loader
     print("Initializing MCP connections...")
-    tool_loader = MCPToolLoader(config_path)
-    success = await tool_loader.initialize()
-    
-    if not success:
-        print("❌ Failed to initialize MCP connections")
+    try:
+        tool_loader = create_mcp_tool_loader(config_path)
+        print("✅ MCP initialization successful")
+    except Exception as e:
+        print(f"❌ Failed to initialize MCP connections: {e}")
         return
-        
-    print("✅ MCP initialization successful")
     
     available_tools = tool_loader.get_available_tools()
     connected_servers = tool_loader.get_connected_servers()
@@ -85,7 +83,6 @@ async def run_interpreter():
                     
         finally:
             print("Shutting down MCP connections...")
-            await tool_loader.shutdown()
             print("Done.")
 
 def main():

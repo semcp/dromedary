@@ -1,18 +1,19 @@
 """
-Dromedary MCP (Model Context Protocol) integration module for P-LLM.
-
-This module provides MCP client functionality to dynamically load and use
-tools from MCP servers, replacing the hardcoded tools system.
+Dromedary MCP - Model Context Protocol integration for the Dromedary system.
 """
 
-from .client import MCPClientManager
-from .tool_loader import MCPToolLoader
+from .client import MCPClientManager, MCPServerConfig
+from .tool_loader import MCPToolLoader, create_mcp_tool_loader
 from .tool_mapper import MCPToolMapper
-from .types import MCPTypeConverter
+from .mcp_manager import MCPManager
+from .mcp_types import MCPTypeConverter
 
 __all__ = [
-    "MCPClientManager",
-    "MCPToolLoader", 
-    "MCPToolMapper",
-    "MCPTypeConverter"
+    'MCPClientManager',
+    'MCPServerConfig', 
+    'MCPToolLoader',
+    'MCPToolMapper',
+    'MCPManager',
+    'MCPTypeConverter',
+    'create_mcp_tool_loader'
 ] 

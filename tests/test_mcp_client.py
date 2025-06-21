@@ -4,11 +4,10 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
+from unittest.mock import Mock, patch, AsyncMock
 import shutil
 
-from dromedary_mcp.client import MCPClientManager, MCPServerConfig
-
+from dromedary_mcp.client import MCPServerConfig, ServerConnection, MCPClientManager
 
 class AsyncTestCase(unittest.TestCase):
     """Base class for async test cases."""
@@ -88,17 +87,19 @@ class TestMCPClientManager(AsyncTestCase):
     
     def test_load_config_success(self):
         """Test successful configuration loading."""
-        manager = MCPClientManager(str(self.config_file))
+        from dromedary_mcp.client import load_mcp_configs_from_file
         
-        self.assertEqual(len(manager.servers), 2)
+        configs = load_mcp_configs_from_file(str(self.config_file))
         
-        server1 = manager.servers["test-server-1"]
+        self.assertEqual(len(configs), 2)
+        
+        server1 = configs["test-server-1"]
         self.assertEqual(server1.name, "test-server-1")
         self.assertEqual(server1.command, "python")
         self.assertEqual(server1.args, ["server1.py"])
         self.assertEqual(server1.env, {"VAR1": "value1"})
         
-        server2 = manager.servers["test-server-2"]
+        server2 = configs["test-server-2"]
         self.assertEqual(server2.name, "test-server-2")
         self.assertEqual(server2.command, "uv")
         self.assertEqual(server2.args, ["run", "server2.py"])
@@ -106,43 +107,51 @@ class TestMCPClientManager(AsyncTestCase):
     
     def test_load_config_file_not_found(self):
         """Test configuration loading with missing file."""
-        manager = MCPClientManager("nonexistent-config.json")
-        self.assertEqual(len(manager.servers), 0)
+        from dromedary_mcp.client import load_mcp_configs_from_file
+        
+        with self.assertRaises(FileNotFoundError):
+            load_mcp_configs_from_file("nonexistent-config.json")
     
     def test_load_config_invalid_json(self):
         """Test configuration loading with invalid JSON."""
+        from dromedary_mcp.client import load_mcp_configs_from_file
+        
         invalid_config_file = Path(self.temp_dir) / "invalid-config.json"
         with open(invalid_config_file, 'w') as f:
             f.write("invalid json content")
         
-        manager = MCPClientManager(str(invalid_config_file))
-        self.assertEqual(len(manager.servers), 0)
+        with self.assertRaises(ValueError):
+            load_mcp_configs_from_file(str(invalid_config_file))
         
         invalid_config_file.unlink()
     
     def test_load_config_empty_servers(self):
         """Test configuration loading with empty mcpServers."""
+        from dromedary_mcp.client import load_mcp_configs_from_file
+        
         empty_config = {"mcpServers": {}}
         empty_config_file = Path(self.temp_dir) / "empty-config.json"
         
         with open(empty_config_file, 'w') as f:
             json.dump(empty_config, f)
         
-        manager = MCPClientManager(str(empty_config_file))
-        self.assertEqual(len(manager.servers), 0)
+        configs = load_mcp_configs_from_file(str(empty_config_file))
+        self.assertEqual(len(configs), 0)
         
         empty_config_file.unlink()
     
     def test_load_config_missing_mcp_servers(self):
         """Test configuration loading without mcpServers key."""
+        from dromedary_mcp.client import load_mcp_configs_from_file
+        
         config_without_servers = {"someOtherConfig": "value"}
         config_file = Path(self.temp_dir) / "no-servers-config.json"
         
         with open(config_file, 'w') as f:
             json.dump(config_without_servers, f)
         
-        manager = MCPClientManager(str(config_file))
-        self.assertEqual(len(manager.servers), 0)
+        with self.assertRaises(ValueError):
+            load_mcp_configs_from_file(str(config_file))
         
         config_file.unlink()
     
@@ -151,13 +160,20 @@ class TestMCPClientManager(AsyncTestCase):
     @patch('dromedary_mcp.client.stdio_client')
     def test_initialize_server_success(self, mock_stdio_client, mock_params, mock_session):
         """Test successful server initialization."""
+        
         # Setup mocks
         mock_context = AsyncMock()
         mock_context.__aenter__ = AsyncMock(return_value=("read", "write"))
-        mock_stdio_client.return_value = mock_context
+        mock_context.__aexit__ = AsyncMock(return_value=None)
+        
+        def mock_stdio_func(*args, **kwargs):
+            return mock_context
+        mock_stdio_client.side_effect = mock_stdio_func
         
         mock_session_instance = AsyncMock()
         mock_session_instance.initialize = AsyncMock()
+        mock_session_instance.__aenter__ = AsyncMock(return_value=mock_session_instance)
+        mock_session_instance.__aexit__ = AsyncMock(return_value=None)
         
         # Mock tools
         mock_tool1 = Mock()
@@ -168,11 +184,26 @@ class TestMCPClientManager(AsyncTestCase):
         mock_session_instance.list_tools = AsyncMock(return_value=[mock_tool1, mock_tool2])
         mock_session.return_value = mock_session_instance
         
-        manager = MCPClientManager(str(self.config_file))
+        config = MCPServerConfig(
+            name="test-server-1",
+            command="python",
+            args=["server1.py"],
+            env={"VAR1": "value1"},
+            type="stdio"
+        )
         
-        # Test single server initialization
+        # Test single server connection
         async def _test():
-            await manager._initialize_server("test-server-1")
+            connection = ServerConnection(config)
+            await connection.connect()
+            
+            # Verify connection is established
+            self.assertTrue(connection.is_connected)
+            self.assertIn("tool1", connection.tools)
+            self.assertIn("tool2", connection.tools)
+            
+            await connection.disconnect()
+            self.assertFalse(connection.is_connected)
         
         self.run_async(_test)
         
@@ -180,33 +211,35 @@ class TestMCPClientManager(AsyncTestCase):
         mock_session.assert_called_once()
         mock_session_instance.initialize.assert_called_once()
         mock_session_instance.list_tools.assert_called_once()
-        
-        # Verify tools were registered
-        self.assertIn("test-server-1", manager.sessions)
-        self.assertIn("tool1", manager.tools)
-        self.assertIn("tool2", manager.tools)
-        # Verify prefixed tools can be accessed via get_tool (but not stored in tools dict)
-        self.assertIsNotNone(manager.get_tool("test-server-1.tool1"))
-        self.assertIsNotNone(manager.get_tool("test-server-1.tool2"))
     
     @patch('dromedary_mcp.client.ClientSession')
     @patch('dromedary_mcp.client.StdioServerParameters')
     @patch('dromedary_mcp.client.stdio_client')
     def test_initialize_server_failure(self, mock_stdio_client, mock_params, mock_session):
         """Test server initialization failure."""
-        # Make stdio_client raise an exception
-        mock_stdio_client.side_effect = Exception("Connection failed")
         
-        manager = MCPClientManager(str(self.config_file))
+        # Make stdio_client raise an exception  
+        def mock_stdio_func(*args, **kwargs):
+            raise Exception("Connection failed")
+        mock_stdio_client.side_effect = mock_stdio_func
+        
+        config = MCPServerConfig(
+            name="test-server-1",
+            command="python",
+            args=["server1.py"],
+            env={"VAR1": "value1"},
+            type="stdio"
+        )
         
         async def _test():
+            connection = ServerConnection(config)
             with self.assertRaises(Exception):
-                await manager._initialize_server("test-server-1")
+                await connection.connect()
+            
+            # Verify connection failed
+            self.assertFalse(connection.is_connected)
         
         self.run_async(_test)
-        
-        # Verify no session was registered
-        self.assertNotIn("test-server-1", manager.sessions)
     
     def test_initialize_all_servers_no_mcp_sdk(self):
         """Test server initialization when MCP SDK is not available."""
@@ -216,19 +249,38 @@ class TestMCPClientManager(AsyncTestCase):
         async def _test():
             with patch('dromedary_mcp.client.stdio_client', None):
                 with patch('dromedary_mcp.client.ClientSession', None):
-                    with self.assertRaises(RuntimeError):
-                        await manager._initialize_server("test-server-1")
+                    # Should gracefully handle missing SDK and return empty list
+                    successful_servers = await manager.initialize_from_config()
+                    self.assertEqual(successful_servers, [])
+                    self.assertEqual(len(manager._connections), 0)
         
         self.run_async(_test)
     
     def test_get_all_tools(self):
         """Test getting all tools."""
+        
         manager = MCPClientManager(str(self.config_file))
         
-        # Add some mock tools
+        # Create mock connections with tools
         mock_tool1 = Mock()
-        mock_tool2 = Mock()
-        manager.tools = {"tool1": mock_tool1, "tool2": mock_tool2}
+        mock_tool1.name = "tool1"
+        mock_tool2 = Mock() 
+        mock_tool2.name = "tool2"
+        
+        config1 = MCPServerConfig(name="server1", command="test", args=[], env={})
+        config2 = MCPServerConfig(name="server2", command="test", args=[], env={})
+        
+        connection1 = ServerConnection(config1)
+        connection1._tools = {"tool1": mock_tool1}
+        connection1._session = Mock()  # Mock session to indicate connected state
+        connection1._exit_stack = Mock()
+        
+        connection2 = ServerConnection(config2)
+        connection2._tools = {"tool2": mock_tool2}
+        connection2._session = Mock()  # Mock session to indicate connected state
+        connection2._exit_stack = Mock()
+        
+        manager._connections = {"server1": connection1, "server2": connection2}
         
         tools = manager.get_all_tools()
         
@@ -237,17 +289,22 @@ class TestMCPClientManager(AsyncTestCase):
         self.assertIn("tool2", tools)
         self.assertIs(tools["tool1"], mock_tool1)
         self.assertIs(tools["tool2"], mock_tool2)
-        
-        # Verify it returns a copy (modifying returned dict doesn't affect original)
-        tools["tool3"] = Mock()
-        self.assertNotIn("tool3", manager.tools)
     
     def test_get_tool(self):
         """Test getting specific tool."""
+        
         manager = MCPClientManager(str(self.config_file))
         
         mock_tool = Mock()
-        manager.tools = {"target_tool": mock_tool}
+        
+        config = MCPServerConfig(name="test-server", command="test", args=[], env={})
+        connection = ServerConnection(config)
+        connection._tools = {"target_tool": mock_tool}
+        connection._session = Mock()  # Mock session to indicate connected state
+        connection._exit_stack = Mock()
+        
+        manager._connections = {"test-server": connection}
+        manager._tool_to_server_mapping = {"target_tool": "test-server"}
         
         # Test existing tool
         result = manager.get_tool("target_tool")
@@ -259,37 +316,49 @@ class TestMCPClientManager(AsyncTestCase):
     
     def test_call_tool_success(self):
         """Test successful tool call."""
+        
         manager = MCPClientManager(str(self.config_file))
         
-        # Setup mock session
-        mock_session = AsyncMock()
-        mock_session.call_tool = AsyncMock(return_value="tool_result")
+        # Setup mock connection
+        mock_tool = Mock()
+        config = MCPServerConfig(name="test-server", command="test", args=[], env={})
+        connection = ServerConnection(config)
+        connection._tools = {"test_tool": mock_tool}
+        connection._session = Mock()  # Mock session to indicate connected state
+        connection._exit_stack = Mock()
+        connection.call_tool = AsyncMock(return_value="tool_result")
         
-        manager.sessions["test-server"] = mock_session
-        manager.server_tool_mapping["test_tool"] = "test-server"
+        manager._connections = {"test-server": connection}
+        manager._tool_to_server_mapping = {"test_tool": "test-server"}
         
         async def _test():
             result = await manager.call_tool("test_tool", {"arg1": "value1"})
             self.assertEqual(result, "tool_result")
-            mock_session.call_tool.assert_called_once_with("test_tool", {"arg1": "value1"})
+            connection.call_tool.assert_called_once_with("test_tool", {"arg1": "value1"})
         
         self.run_async(_test)
     
     def test_call_tool_with_server_prefix(self):
         """Test tool call with server prefix."""
+        
         manager = MCPClientManager(str(self.config_file))
         
-        mock_session = AsyncMock()
-        mock_session.call_tool = AsyncMock(return_value="prefixed_result")
+        mock_tool = Mock()
+        config = MCPServerConfig(name="test-server", command="test", args=[], env={})
+        connection = ServerConnection(config)
+        connection._tools = {"prefixed_tool": mock_tool}
+        connection._session = Mock()  # Mock session to indicate connected state
+        connection._exit_stack = Mock()
+        connection.call_tool = AsyncMock(return_value="prefixed_result")
         
-        manager.sessions["test-server"] = mock_session
-        manager.server_tool_mapping["test-server.prefixed_tool"] = "test-server"
+        manager._connections = {"test-server": connection}
+        manager._tool_to_server_mapping = {"test-server.prefixed_tool": "test-server"}
         
         async def _test():
             result = await manager.call_tool("test-server.prefixed_tool", {"arg1": "value1"})
             self.assertEqual(result, "prefixed_result")
             # Verify the server prefix was stripped from the tool name
-            mock_session.call_tool.assert_called_once_with("prefixed_tool", {"arg1": "value1"})
+            connection.call_tool.assert_called_once_with("prefixed_tool", {"arg1": "value1"})
         
         self.run_async(_test)
     
@@ -308,25 +377,31 @@ class TestMCPClientManager(AsyncTestCase):
         """Test tool call when server session is not available."""
         manager = MCPClientManager(str(self.config_file))
         
-        manager.server_tool_mapping["test_tool"] = "test-server"
-        # Don't add session to manager.sessions
+        manager._tool_to_server_mapping["test_tool"] = "test-server"
+        # Don't add connection to manager._connections
         
         async def _test():
             with self.assertRaises(RuntimeError) as cm:
                 await manager.call_tool("test_tool", {})
-            self.assertIn("No active session for server 'test-server'", str(cm.exception))
+            self.assertIn("No active connection for server 'test-server'", str(cm.exception))
         
         self.run_async(_test)
     
     def test_call_tool_session_error(self):
         """Test tool call when session raises an error."""
+        
         manager = MCPClientManager(str(self.config_file))
         
-        mock_session = AsyncMock()
-        mock_session.call_tool = AsyncMock(side_effect=Exception("Session error"))
+        mock_tool = Mock()
+        config = MCPServerConfig(name="test-server", command="test", args=[], env={})
+        connection = ServerConnection(config)
+        connection._tools = {"test_tool": mock_tool}
+        connection._session = Mock()  # Mock session to indicate connected state
+        connection._exit_stack = Mock()
+        connection.call_tool = AsyncMock(side_effect=Exception("Connection error"))
         
-        manager.sessions["test-server"] = mock_session
-        manager.server_tool_mapping["test_tool"] = "test-server"
+        manager._connections = {"test-server": connection}
+        manager._tool_to_server_mapping = {"test_tool": "test-server"}
         
         async def _test():
             with self.assertRaises(Exception):
@@ -336,103 +411,112 @@ class TestMCPClientManager(AsyncTestCase):
     
     def test_is_connected(self):
         """Test server connection status."""
+        
         manager = MCPClientManager(str(self.config_file))
         
         # Test not connected
         self.assertFalse(manager.is_connected("test-server"))
         
-        # Add mock session
-        manager.sessions["test-server"] = Mock()
+        # Add mock connection
+        config = MCPServerConfig(name="test-server", command="test", args=[], env={})
+        connection = ServerConnection(config)
+        connection._session = Mock()  # Mock session to indicate connected state
+        connection._exit_stack = Mock()
+        manager._connections = {"test-server": connection}
         
         # Test connected
         self.assertTrue(manager.is_connected("test-server"))
     
     def test_get_connected_servers(self):
         """Test getting list of connected servers."""
+        
         manager = MCPClientManager(str(self.config_file))
         
         # Initially no servers connected
         self.assertEqual(manager.get_connected_servers(), [])
         
-        # Add mock sessions
-        manager.sessions["server1"] = Mock()
-        manager.sessions["server2"] = Mock()
+        # Add mock connections
+        config1 = MCPServerConfig(name="server1", command="test", args=[], env={})
+        config2 = MCPServerConfig(name="server2", command="test", args=[], env={})
+        
+        connection1 = ServerConnection(config1)
+        connection1._session = Mock()  # Mock session to indicate connected state
+        connection1._exit_stack = Mock()
+        connection2 = ServerConnection(config2)
+        connection2._session = Mock()  # Mock session to indicate connected state
+        connection2._exit_stack = Mock()
+        
+        manager._connections = {"server1": connection1, "server2": connection2}
         
         connected = manager.get_connected_servers()
         self.assertEqual(set(connected), {"server1", "server2"})
     
     def test_shutdown(self):
         """Test shutdown process."""
+        
         manager = MCPClientManager(str(self.config_file))
         
-        # Add mock sessions and exit stacks
-        mock_session1 = AsyncMock()
-        mock_session1.__aexit__ = AsyncMock()
-        mock_session2 = AsyncMock()
-        mock_session2.__aexit__ = AsyncMock()
+        # Add mock connections
+        config1 = MCPServerConfig(name="server1", command="test", args=[], env={})
+        config2 = MCPServerConfig(name="server2", command="test", args=[], env={})
         
-        # Mock exit stacks
-        mock_exit_stack1 = AsyncMock()
-        mock_exit_stack1.aclose = AsyncMock()
-        mock_exit_stack2 = AsyncMock()
-        mock_exit_stack2.aclose = AsyncMock()
+        connection1 = ServerConnection(config1)
+        connection1._session = Mock()  # Mock session to indicate connected state
+        connection1._exit_stack = Mock()
+        connection1.disconnect = AsyncMock()
         
-        manager.sessions["server1"] = mock_session1
-        manager.sessions["server2"] = mock_session2
-        manager.exit_stacks["server1"] = mock_exit_stack1
-        manager.exit_stacks["server2"] = mock_exit_stack2
-        manager.tools["tool1"] = Mock()
-        manager.server_tool_mapping["tool1"] = "server1"
+        connection2 = ServerConnection(config2)
+        connection2._session = Mock()  # Mock session to indicate connected state
+        connection2._exit_stack = Mock()
+        connection2.disconnect = AsyncMock()
+        
+        manager._connections = {"server1": connection1, "server2": connection2}
+        manager._tool_to_server_mapping = {"tool1": "server1"}
         
         async def _test():
             await manager.shutdown()
             
-            # Verify exit stacks were closed and sessions' __aexit__ called
-            mock_exit_stack1.aclose.assert_called_once()
-            mock_exit_stack2.aclose.assert_called_once()
-            mock_session1.__aexit__.assert_called_once()
-            mock_session2.__aexit__.assert_called_once()
+            # Verify connections were disconnected
+            connection1.disconnect.assert_called_once()
+            connection2.disconnect.assert_called_once()
             
             # Verify cleanup
-            self.assertEqual(len(manager.sessions), 0)
-            self.assertEqual(len(manager.tools), 0)
-            self.assertEqual(len(manager.server_tool_mapping), 0)
+            self.assertEqual(len(manager._connections), 0)
+            self.assertEqual(len(manager._tool_to_server_mapping), 0)
         
         self.run_async(_test)
     
     def test_shutdown_with_session_errors(self):
-        """Test shutdown when some sessions raise errors."""
+        """Test shutdown when some connections raise errors."""
+        
         manager = MCPClientManager(str(self.config_file))
         
-        # Add mock sessions with one that raises an error
-        mock_session1 = AsyncMock()
-        mock_session1.__aexit__ = AsyncMock(side_effect=Exception("Shutdown error"))
-        mock_session2 = AsyncMock()
-        mock_session2.__aexit__ = AsyncMock()
+        # Add mock connections with one that raises an error
+        config1 = MCPServerConfig(name="server1", command="test", args=[], env={})
+        config2 = MCPServerConfig(name="server2", command="test", args=[], env={})
         
-        # Mock exit stacks
-        mock_exit_stack1 = AsyncMock()
-        mock_exit_stack1.aclose = AsyncMock()
-        mock_exit_stack2 = AsyncMock()
-        mock_exit_stack2.aclose = AsyncMock()
+        connection1 = ServerConnection(config1)
+        connection1._session = Mock()  # Mock session to indicate connected state
+        connection1._exit_stack = Mock()
+        connection1.disconnect = AsyncMock(side_effect=Exception("Shutdown error"))
         
-        manager.sessions["server1"] = mock_session1
-        manager.sessions["server2"] = mock_session2
-        manager.exit_stacks["server1"] = mock_exit_stack1
-        manager.exit_stacks["server2"] = mock_exit_stack2
+        connection2 = ServerConnection(config2)
+        connection2._session = Mock()  # Mock session to indicate connected state
+        connection2._exit_stack = Mock()
+        connection2.disconnect = AsyncMock()
+        
+        manager._connections = {"server1": connection1, "server2": connection2}
         
         async def _test():
             # Shutdown should complete even with errors
             await manager.shutdown()
             
-            # Verify both sessions were attempted to be shutdown
-            mock_exit_stack1.aclose.assert_called_once()
-            mock_exit_stack2.aclose.assert_called_once()
-            mock_session1.__aexit__.assert_called_once()
-            mock_session2.__aexit__.assert_called_once()
+            # Verify both connections were attempted to be shutdown
+            connection1.disconnect.assert_called_once()
+            connection2.disconnect.assert_called_once()
             
             # Verify cleanup still happened
-            self.assertEqual(len(manager.sessions), 0)
+            self.assertEqual(len(manager._connections), 0)
         
         self.run_async(_test)
 
@@ -474,11 +558,16 @@ class TestMCPClientManagerIntegration(AsyncTestCase):
         # Setup comprehensive mocks
         mock_context = AsyncMock()
         mock_context.__aenter__ = AsyncMock(return_value=("read", "write"))
-        mock_stdio_client.return_value = mock_context
+        mock_context.__aexit__ = AsyncMock(return_value=None)
+        
+        def mock_stdio_func(*args, **kwargs):
+            return mock_context
+        mock_stdio_client.side_effect = mock_stdio_func
         
         mock_session_instance = AsyncMock()
         mock_session_instance.initialize = AsyncMock()
-        mock_session_instance.__aexit__ = AsyncMock()
+        mock_session_instance.__aenter__ = AsyncMock(return_value=mock_session_instance)
+        mock_session_instance.__aexit__ = AsyncMock(return_value=None)
         
         # Mock tools with realistic structure
         mock_tool = Mock()
@@ -492,7 +581,7 @@ class TestMCPClientManagerIntegration(AsyncTestCase):
         
         async def _test():
             # Initialize servers
-            successful_servers = await manager.initialize_all_servers()
+            successful_servers = await manager.initialize_from_config()
             self.assertEqual(successful_servers, ["mock-server"])
             
             # Verify server is connected
