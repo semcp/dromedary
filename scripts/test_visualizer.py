@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 
-from visualizer import InterpreterVisualized
-from interpreter import PythonInterpreter
+import sys
+from pathlib import Path
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.dromedary.utils.visualizer import InterpreterVisualized
+from src.dromedary.interpreter import PythonInterpreter
 
 def test():
     interpreter_with_viz = InterpreterVisualized(PythonInterpreter, enable_policies=False)

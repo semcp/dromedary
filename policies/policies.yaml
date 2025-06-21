@@ -1,0 +1,43 @@
+email_policy:
+  allowed_recipients:
+    - "bob.wilson@techcorp.com"
+    - "alice.cooper@clientcorp.com"
+    - "mossaka@bluesparrowtech.com"
+    - "john.doe@bluesparrowtech.com"
+    - "jane.smith@bluesparrowtech.com"
+  restricted_recipients:
+    - "mike.johnson@bluesparrowtech.com"
+  untrusted_provenance_sources:
+    - "get_received_emails"
+    - "search_emails"
+    - "get_unread_emails"
+
+calendar_policy:
+  allowed_working_hours_start: 8
+  allowed_working_hours_end: 18
+  max_participants: 10
+  business_emails:
+    - "mossaka@bluesparrowtech.com"
+    - "john.doe@bluesparrowtech.com"
+    - "jane.smith@bluesparrowtech.com"
+    - "mike.johnson@bluesparrowtech.com"
+    - "bob.wilson@techcorp.com"
+    - "alice.cooper@clientcorp.com"
+
+file_policy:
+  sensitive_file_patterns:
+    - "confidential"
+    - "secret"
+    - "private"
+    - "password"
+    - "key"
+  allowed_share_permissions:
+    - "read"
+    - "write"
+  business_emails:
+    - "mossaka@bluesparrowtech.com"
+    - "john.doe@bluesparrowtech.com"
+    - "jane.smith@bluesparrowtech.com"
+    - "mike.johnson@bluesparrowtech.com"
+    - "bob.wilson@techcorp.com"
+    - "alice.cooper@clientcorp.com" 

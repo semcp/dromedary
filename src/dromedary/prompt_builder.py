@@ -3,7 +3,7 @@ from typing import get_type_hints, get_origin, get_args, Optional
 from langchain.tools import BaseTool
 from pydantic import BaseModel
 
-from dromedary_mcp.tool_loader import MCPToolLoader
+from .mcp.tool_loader import MCPToolLoader
 
 # this is just to help build a system prompt for the P-LLM agent given the tools.
 class SystemPromptBuilder:

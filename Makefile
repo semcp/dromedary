@@ -7,7 +7,7 @@ check-uv:
 	fi
 
 test: check-uv
-	uv run run_tests.py
+	./scripts/run_tests.sh
 
 run: check-uv
-	uv run p_llm_agent.py
+	uv run -m dromedary.agent @mcp_servers/mcp-servers-config.json --policy-config policies/policies.yaml
