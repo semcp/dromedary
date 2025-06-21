@@ -458,15 +458,6 @@ syntax."""
                 print(f"\n❌ Error: {e}")
                 print("Please try again.")
     
-    async def shutdown(self):
-        """Shutdown the agent and clean up MCP connections."""
-        if self.mcp_tool_loader:
-            try:
-                await self.mcp_tool_loader.shutdown()
-                print("🔌 MCP connections closed")
-            except Exception as e:
-                print(f"⚠️ Error closing MCP connections: {e}")
-
 def format_result(result):
     if isinstance(result, CapabilityValue):
         return str(result.value)
@@ -517,9 +508,7 @@ async def main():
         print("  export AZURE_OPENAI_ENDPOINT='your-endpoint-here'")
     except Exception as e:
         print(f"❌ Unexpected error: {e}")
-    finally:
-        if agent_system:
-            await agent_system.shutdown()
+
 
 if __name__ == "__main__":
     asyncio.run(main()) 

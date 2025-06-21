@@ -48,7 +48,7 @@ class EmailPolicy(Policy):
         capability_values = context.get("capability_values", {})
         
         # Try to find recipients capability value - check both parameter name and positional args
-        recipients_cap = capability_values.get("arg_0") or capability_values.get("recipients")
+        recipients_cap = capability_values.get("recipients")
         
         if not recipients_cap or not hasattr(recipients_cap, 'capability'):
             return violations

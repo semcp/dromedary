@@ -150,7 +150,8 @@ class NodeExecutor(ast.NodeVisitor):
         for k, v in zip(node.keys, node.values):
             if k:
                 key_value = self.visit(k)
-                keys.append(self.provenance.unwrap(key_value))
+                unwrapped_key = self.provenance.unwrap(key_value)
+                keys.append(unwrapped_key)
                 dependencies.append(key_value)
             else:
                 keys.append(None)
@@ -159,7 +160,30 @@ class NodeExecutor(ast.NodeVisitor):
             values.append(self.provenance.unwrap(val_value))
             dependencies.append(val_value)
         
-        return self.provenance.from_computation(dict(zip(keys, values)), dependencies)
+        # Validate that all keys are hashable before creating the dictionary
+        try:
+            result_dict = {}
+            for key, value in zip(keys, values):
+                if key is not None:
+                    # Test if the key is hashable by attempting to hash it
+                    hash(key)
+                result_dict[key] = value
+        except TypeError as e:
+            if "unhashable type" in str(e):
+                # Provide a more descriptive error message
+                unhashable_keys = []
+                for key in keys:
+                    if key is not None:
+                        try:
+                            hash(key)
+                        except TypeError:
+                            unhashable_keys.append(f"{type(key).__name__}: {repr(key)}")
+                
+                if unhashable_keys:
+                    raise TypeError(f"Dictionary keys must be hashable. Found unhashable keys: {', '.join(unhashable_keys)}")
+            raise  # Re-raise the original error if it's not about unhashable types
+        
+        return self.provenance.from_computation(result_dict, dependencies)
     
     def visit_Set(self, node: ast.Set) -> CapabilityValue:
         result, dependencies = self._process_sequence_elements_for_set(node.elts)
@@ -613,7 +637,13 @@ class NodeExecutor(ast.NodeVisitor):
             unwrapped_obj = self.provenance.unwrap(obj)
             unwrapped_key = self.provenance.unwrap(key)
             unwrapped_value = self.provenance.unwrap(value)
-            unwrapped_obj[unwrapped_key] = unwrapped_value
+            
+            try:
+                if unwrapped_key is not None:
+                    hash(unwrapped_key)
+                unwrapped_obj[unwrapped_key] = unwrapped_value
+            except TypeError:
+                raise
         
         elif isinstance(target, ast.Attribute):
             obj = self.visit(target.value)

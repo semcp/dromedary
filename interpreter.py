@@ -125,18 +125,15 @@ class PythonInterpreter:
             unwrapped_args = [self._unwrap_value(arg) for arg in args]
             unwrapped_kwargs = {k: self._unwrap_value(v) for k, v in kwargs.items()}
             
-            additional_context = {}
+            # Get tool schema to map positional arguments to parameter names
+            tool_schema = self.mcp_tool_loader.get_tool_schema(tool_name) if self.mcp_tool_loader else None
+            mapped_capability_values = self._map_args_to_parameters(
+                tool_name, args, kwargs, tool_schema
+            )
             
-            capability_values = {}
-            for i, arg in enumerate(args):
-                if isinstance(arg, CapabilityValue):
-                    capability_values[f"arg_{i}"] = arg
-            for k, v in kwargs.items():
-                if isinstance(v, CapabilityValue):
-                    capability_values[k] = v
-            
-            if capability_values:
-                additional_context["capability_values"] = capability_values
+            additional_context = {
+                "capability_values": mapped_capability_values
+            }
             
             # Add file content for file operations
             if "file_id" in unwrapped_kwargs:
@@ -168,6 +165,35 @@ class PythonInterpreter:
         
         return mcp_policy_validated_tool
     
+    def _map_args_to_parameters(self, tool_name: str, args: tuple, kwargs: dict, tool_schema: dict) -> dict:
+        """Map positional and keyword arguments to their proper parameter names with capability values."""
+        mapped_values = {}
+        
+        # Add keyword arguments first
+        for key, value in kwargs.items():
+            if isinstance(value, CapabilityValue):
+                mapped_values[key] = value
+        
+        # Map positional arguments to parameter names using schema
+        if tool_schema and args:
+            input_schema = tool_schema.get('inputSchema', {})
+            properties = input_schema.get('properties', {})
+            required_fields = input_schema.get('required', [])
+            
+            # Create ordered parameter list (required first, then optional)
+            param_names = required_fields.copy()
+            for param_name in properties.keys():
+                if param_name not in required_fields:
+                    param_names.append(param_name)
+            
+            # Map positional args to parameter names
+            for i, arg in enumerate(args):
+                if i < len(param_names) and isinstance(arg, CapabilityValue):
+                    param_name = param_names[i]
+                    mapped_values[param_name] = arg
+        
+        return mapped_values
+        
     def _query_ai_assistant(self, query: str, output_schema: Type[BaseModel]) -> BaseModel:
         """Query AI assistant with structured output capabilities."""
         unwrapped_query = self._unwrap_value(query)
