@@ -307,6 +307,7 @@ dependencies = [
     { name = "networkx", version = "3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pydantic", extra = ["email"] },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "rich" },
 ]
 
@@ -322,6 +323,7 @@ requires-dist = [
     { name = "networkx", specifier = ">=3.0.0" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "rich", specifier = ">=14.0.0" },
 ]
 

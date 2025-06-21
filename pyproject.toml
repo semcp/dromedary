@@ -16,4 +16,5 @@ dependencies = [
     "networkx>=3.0.0",
     "rich>=14.0.0",
     "mcp[cli]>=1.9.4",
+    "pyyaml>=6.0.2",
 ]
