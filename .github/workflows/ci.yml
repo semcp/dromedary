@@ -14,18 +14,18 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-        
-    - name: Install uv
-      run: curl -LsSf https://astral.sh/uv/install.sh | sh
+    - uses: astral-sh/setup-uv@v4  
+    
+    - name: Install dependencies
+      run: |
+        uv sync
+        uv pip install pytest>=7.0.0 pytest-asyncio>=0.21.0
       
-    - name: Add uv to PATH
-      run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-      
-    - run: make test 
+    - name: Run tests
+      run: make test
       env:
         AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
         AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}

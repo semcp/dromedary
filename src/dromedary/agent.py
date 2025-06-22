@@ -14,18 +14,20 @@ from rich.text import Text
 from rich.markdown import Markdown
 from rich.live import Live
 
-from interpreter import PythonInterpreter
-from visualizer import InterpreterVisualized
+from .interpreter import PythonInterpreter
+from .utils.visualizer import InterpreterVisualized
+from .policy.engine import create_policy_engine
 
-from capability import CapabilityValue
-from dromedary_mcp.tool_loader import MCPToolLoader
-from prompt_builder import SystemPromptBuilder
+from .provenance_graph import CapabilityValue
+from .mcp import create_mcp_tool_loader
+from .prompt_builder import SystemPromptBuilder
 
 class PLLMAgent:
-    def __init__(self, mcp_config: Optional[str] = None):
+    def __init__(self, mcp_config: Optional[str] = None, policy_config: Optional[str] = None):
         load_dotenv()
         self.agent = None
         self.mcp_config = mcp_config
+        self.policy_config = policy_config
         self.mcp_tool_loader: Optional[MCPToolLoader] = None
         self.interpreter = None
         self.security_policy_enabled = False
@@ -265,10 +267,8 @@ syntax."""
         """Initialize MCP tool loader and connect to servers."""
         print("🔌 Initializing MCP connections...")
         
-        self.mcp_tool_loader = MCPToolLoader(self.mcp_config)
-        success = await self.mcp_tool_loader.initialize()
-        
-        if success:
+        try:
+            self.mcp_tool_loader = create_mcp_tool_loader(self.mcp_config)
             available_tools = self.mcp_tool_loader.get_available_tools()
             connected_servers = self.mcp_tool_loader.get_connected_servers()
             
@@ -279,14 +279,19 @@ syntax."""
             else:
                 print("⚠️ MCP servers connected but no tools discovered")
             
+            if self.policy_config:
+                policy_engine = create_policy_engine(self.policy_config)
+            
             self.interpreter = InterpreterVisualized(
                 lambda enable_policies=False: PythonInterpreter(
                     enable_policies=enable_policies, 
-                    mcp_tool_loader=self.mcp_tool_loader
+                    mcp_tool_loader=self.mcp_tool_loader,
+                    policy_engine=policy_engine
                 ), 
                 enable_policies=False
             )
-        else:
+        except Exception as e:
+            print(f"MCP initialization failed: {e}")
             raise RuntimeError("Failed to initialize MCP connections. MCP is required.")
     
     async def initialize(self):
@@ -459,15 +464,6 @@ syntax."""
                 print(f"\n❌ Error: {e}")
                 print("Please try again.")
     
-    async def shutdown(self):
-        """Shutdown the agent and clean up MCP connections."""
-        if self.mcp_tool_loader:
-            try:
-                await self.mcp_tool_loader.shutdown()
-                print("🔌 MCP connections closed")
-            except Exception as e:
-                print(f"⚠️ Error closing MCP connections: {e}")
-
 def format_result(result):
     if isinstance(result, CapabilityValue):
         return str(result.value)
@@ -487,6 +483,7 @@ def parse_args():
     
     parser = argparse.ArgumentParser(description="P-LLM Agent CLI")
     parser.add_argument("--mcp-config", type=str, help="MCP configuration file")
+    parser.add_argument("--policy-config", type=str, help="Policy configuration file (policies.yaml)")
     
     args = parser.parse_args(remaining_args)
     
@@ -501,13 +498,20 @@ async def main():
         args = parse_args()
         
         if args.mcp_config and not os.path.exists(args.mcp_config):
-            print(f"❌ Config file not found: {args.mcp_config}")
+            print(f"❌ MCP config file not found: {args.mcp_config}")
             print("Available config files:")
             for config_file in Path(".").glob("**/*config*.json"):
                 print(f"  {config_file}")
             return
         
-        agent_system = PLLMAgent(args.mcp_config)
+        if args.policy_config and not os.path.exists(args.policy_config):
+            print(f"❌ Policy config file not found: {args.policy_config}")
+            print("Available policy files:")
+            for policy_file in Path(".").glob("**/policies.yaml"):
+                print(f"  {policy_file}")
+            return
+        
+        agent_system = PLLMAgent(args.mcp_config, args.policy_config)
         agent = await agent_system.initialize()
         if agent:
             await agent_system.chat_loop(agent)
@@ -518,9 +522,7 @@ async def main():
         print("  export AZURE_OPENAI_ENDPOINT='your-endpoint-here'")
     except Exception as e:
         print(f"❌ Unexpected error: {e}")
-    finally:
-        if agent_system:
-            await agent_system.shutdown()
+
 
 if __name__ == "__main__":
     asyncio.run(main()) 

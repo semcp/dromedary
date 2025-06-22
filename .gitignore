@@ -11,3 +11,5 @@ wheels/
 
 # IDEs
 .cursor
+
+.env

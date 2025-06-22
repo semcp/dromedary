@@ -82,14 +82,3 @@ class CloudDriveFile(BaseModel):
         shared_str = f" (shared with {len(self.shared_with)})" if self.shared_with else ""
         return f"{self.filename} | {size_str} | Modified: {self.last_modified.strftime('%Y-%m-%d %H:%M')}{shared_str}"
 
-
-def available_types():
-    return [
-        Email,
-        EmailStatus,
-        CalendarEvent,
-        EventStatus,
-        EmailContact,
-        CloudDriveFile,
-        SharingPermission,
-    ] 

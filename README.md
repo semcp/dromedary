@@ -36,13 +36,19 @@ export AZURE_OPENAI_API_KEY=<your-api-key>
 Then you can run the project as simple as:
 
 ```bash
-uv run p_llm_agent.py @<path-to-mcp-config-file>
+uv run p_llm_agent.py @<path-to-mcp-config-file> --policy-config <path-to-policy-config-file>
 ```
 
 For example, if you want to use the MCP config file in the `mcp_servers` directory, you can run:
 
 ```bash
-uv run p_llm_agent.py @mcp_servers/mcp-servers-config.json
+make run
+```
+
+### Run Tests
+
+```bash
+make test
 ```
 
 ## Example

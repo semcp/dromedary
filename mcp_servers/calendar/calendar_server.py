@@ -9,10 +9,11 @@ from dataclasses import dataclass
 import sys
 from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.append(str(Path(__file__).parent.parent))
+# Add project root to path for package imports
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
 
-from models import CalendarEvent, EventStatus
+from mcp_servers.models import CalendarEvent, EventStatus
 
 # MCP imports
 from mcp.server.models import InitializationOptions

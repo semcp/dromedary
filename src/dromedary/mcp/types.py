@@ -3,7 +3,7 @@ Type conversion utilities for MCP integration.
 """
 
 import json
-from typing import Any, Dict, List, Type, get_type_hints, get_origin, get_args
+from typing import Any, Dict, List, Type, get_origin, get_args
 from datetime import datetime
 from pydantic import BaseModel
 
