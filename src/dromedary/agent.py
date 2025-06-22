@@ -18,7 +18,7 @@ from .interpreter import PythonInterpreter
 from .utils.visualizer import InterpreterVisualized
 from .policy.engine import create_policy_engine
 
-from .capability import CapabilityValue
+from .provenance_graph import CapabilityValue
 from .mcp import create_mcp_tool_loader
 from .prompt_builder import SystemPromptBuilder
 

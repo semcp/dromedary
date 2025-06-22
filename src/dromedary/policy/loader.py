@@ -46,23 +46,21 @@ class EmailPolicy(Policy):
             return violations
         
         capability_values = context.get("capability_values", {})
+        provenance_graph = context.get("provenance_graph")
         
         # Try to find recipients capability value - check both parameter name and positional args
         recipients_cap = capability_values.get("recipients")
         
-        if not recipients_cap or not hasattr(recipients_cap, 'capability'):
+        if not recipients_cap or not hasattr(recipients_cap, 'node_id') or not provenance_graph:
             return violations
         
         untrusted_tools = set(self.config.get("untrusted_provenance_sources", []))
         
-        tool_sources = []
-        for source in recipients_cap.capability.sources:
-            if source.type.value == "tool":
-                tool_sources.append(source.identifier)
-        
-        for tool_source in tool_sources:
-            if tool_source in untrusted_tools:
-                violations.append(f"Cannot send email to address from untrusted source '{tool_source}'. Use the search_contacts_by_name or search_contacts_by_email tools to get the email address.")
+        # Get the source for this node from the provenance graph
+        source = provenance_graph.sources.get(recipients_cap.node_id)
+        if source and source.type.value == "tool":
+            if source.identifier in untrusted_tools:
+                violations.append(f"Cannot send email to address from untrusted source '{source.identifier}'. Use the search_contacts_by_name or search_contacts_by_email tools to get the email address.")
         
         return violations
 

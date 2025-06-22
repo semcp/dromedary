@@ -1,14 +1,12 @@
 import ast
 import os
-from datetime import datetime, timedelta, date, time, timezone
 from enum import Enum
-from typing import Any, Dict, Type, Optional
+from typing import Any, Dict, Type, Optional, List
 from langchain.chat_models import init_chat_model
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel
 
 from .policy.engine import create_policy_engine, PolicyViolationError, PolicyEngine
-from .capability import CapabilityValue
-from .provenance import ProvenanceManager
+from .provenance_graph import ProvenanceGraph, ProvenanceTracker, CapabilityValue
 from .executor import NodeExecutor
 from .mcp.tool_loader import MCPToolLoader
 
@@ -23,8 +21,12 @@ class PythonInterpreter:
         self.mcp_tool_loader = mcp_tool_loader
         self.globals = {}
         self.tools = {}
-        self.provenance = ProvenanceManager()
+        
+        self.provenance_graph = ProvenanceGraph()
+        self.provenance = ProvenanceTracker(self.provenance_graph)
+        
         self.executor = NodeExecutor(self.globals, self.provenance)
+        self.last_result: Optional[CapabilityValue] = None
         self._setup_environment()
         self._setup_tools()
         self._setup_ai_assistant()
@@ -57,6 +59,7 @@ class PythonInterpreter:
             'any': any,
             'all': all,
             'bool': bool,
+            'dict': dict,
             'dir': dir,
             'divmod': divmod,
             'enumerate': enumerate,
@@ -80,23 +83,17 @@ class PythonInterpreter:
             'sum': sum,
             'ValueError': ValueError,
             'Enum': Enum,
-            'datetime': datetime,
-            'timedelta': timedelta,
-            'date': date,
-            'time': time,
-            'timezone': timezone,
-            'BaseModel': BaseModel,
-            'Field': Field,
-            'EmailStr': EmailStr,
         }
         
         for name, value in builtins.items():
             self.globals[name] = self.provenance.from_system(value, "builtin")
     
-    def _wrapped_print(self, *args, **kwargs):
-        """Wrapped print function that handles CapabilityValue objects"""
+    def _wrapped_print(self, *args, dependencies: List[CapabilityValue] = None, **kwargs):
+        """Wrapped print function that handles CapabilityValue objects and provenance."""
         unwrapped_args = [self._unwrap_value(arg) for arg in args]
-        return print(*unwrapped_args, **kwargs)
+        print(*unwrapped_args, **kwargs)
+        dependencies = dependencies or []
+        return self.provenance.from_computation(None, dependencies=dependencies)
     
     def _setup_tools(self):
         """Setup tools and add them to the globals"""
@@ -110,14 +107,14 @@ class PythonInterpreter:
                 self.globals[tool_name] = self.provenance.from_system(wrapped_tool, "mcp")
         
         # Create a wrapper function to mark it as special
-        def query_ai_assistant(query, output_schema):
-            return self._query_ai_assistant(query, output_schema)
+        def query_ai_assistant(query, output_schema, dependencies: List[CapabilityValue] = None):
+            return self._query_ai_assistant(query, output_schema, dependencies)
         query_ai_assistant._needs_capability_values = True
         self.globals['query_ai_assistant'] = self.provenance.from_system(query_ai_assistant, "builtin")
     
     def _create_mcp_capability_wrapped_tool(self, tool_name: str, mcp_tool_func):
         """Create a wrapper function for MCP tools that validates policies and wraps results."""
-        def mcp_policy_validated_tool(*args, **kwargs):
+        def mcp_policy_validated_tool(*args, dependencies: List[CapabilityValue] = None, **kwargs):
             unwrapped_args = [self._unwrap_value(arg) for arg in args]
             unwrapped_kwargs = {k: self._unwrap_value(v) for k, v in kwargs.items()}
             
@@ -128,7 +125,8 @@ class PythonInterpreter:
             )
             
             additional_context = {
-                "capability_values": mapped_capability_values
+                "capability_values": mapped_capability_values,
+                "provenance_graph": self.provenance_graph
             }
             
             # Add file content for file operations
@@ -157,7 +155,8 @@ class PythonInterpreter:
             
             result = mcp_tool_func(*unwrapped_args, **unwrapped_kwargs)
             
-            return self.provenance.from_tool(result, tool_name)
+            dependencies = dependencies or []
+            return self.provenance.from_tool(result, tool_name, dependencies=dependencies)
         
         return mcp_policy_validated_tool
     
@@ -190,33 +189,38 @@ class PythonInterpreter:
         
         return mapped_values
         
-    def _query_ai_assistant(self, query: str, output_schema: Type[BaseModel]) -> BaseModel:
+    def _query_ai_assistant(self, query: str, output_schema: Type[BaseModel], dependencies: List[CapabilityValue] = None) -> BaseModel:
         """Query AI assistant with structured output capabilities."""
         unwrapped_query = self._unwrap_value(query)
         unwrapped_schema = self._unwrap_value(output_schema)
         
-        dependencies = []
-        if isinstance(query, CapabilityValue):
-            dependencies.append(query)
-        if isinstance(output_schema, CapabilityValue):
-            dependencies.append(output_schema)
+        # The 'dependencies' list is now passed directly from the executor
+        dependencies = dependencies or []
         
         model_with_structure = self.llm.with_structured_output(unwrapped_schema)
         result = model_with_structure.invoke(unwrapped_query)
         
-        return self.provenance.from_computation(result, dependencies)
+        # Pass the complete dependency list
+        return self.provenance.from_computation(result, dependencies=dependencies)
     
     def execute(self, code: str) -> Dict[str, Any]:
         """Execute Python code using the NodeExecutor with proper error handling."""
         try:
             tree = ast.parse(code)
             result = self.executor.visit(tree)
+            
+            if isinstance(result, CapabilityValue):
+                self.last_result = result
+            else:
+                self.last_result = None
+                
             return {
                 "success": True,
                 "result": result,
                 "error": None
             }
         except SyntaxError as e:
+            self.last_result = None
             return {
                 "success": False,
                 "result": None,
@@ -224,6 +228,7 @@ class PythonInterpreter:
                 "error_type": "syntax"
             }
         except PolicyViolationError as e:
+            self.last_result = None
             return {
                 "success": False,
                 "result": None,
@@ -231,6 +236,7 @@ class PythonInterpreter:
                 "error_type": "policy"
             }
         except Exception as e:
+            self.last_result = None
             return {
                 "success": False,
                 "result": None,
@@ -249,6 +255,9 @@ class PythonInterpreter:
     def reset_globals(self):
         """Reset globals to initial state"""
         self.globals.clear()
+        self.provenance_graph = ProvenanceGraph()
+        self.provenance = ProvenanceTracker(self.provenance_graph)
+        self.last_result = None
         self._setup_environment()
         self._setup_tools()
         self.executor = NodeExecutor(self.globals, self.provenance)

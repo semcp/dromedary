@@ -6,11 +6,15 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from dromedary.mcp.tool_loader import create_mcp_tool_loader
 from src.dromedary.utils.visualizer import InterpreterVisualized
 from src.dromedary.interpreter import PythonInterpreter
+from src.dromedary.policy.engine import create_policy_engine
 
 def test():
-    interpreter_with_viz = InterpreterVisualized(PythonInterpreter, enable_policies=False)
+    interpreter_with_viz = InterpreterVisualized(PythonInterpreter, enable_policies=False, 
+                                                 mcp_tool_loader=create_mcp_tool_loader(config_path="mcp_servers/mcp-servers-config.json"),
+                                                 policy_engine=create_policy_engine(policies_dir="policies/policies.yaml"))
     
     test_code = """
 from pydantic import BaseModel, EmailStr
@@ -26,8 +30,8 @@ last_email = received[-1]
 # Extract Bob's email address from the last email
 extracted = query_ai_assistant(
     f"Extract Bob's email address from the following email:\\n\\n"
-    f"Subject: {last_email.subject}\\n\\n"
-    f"Body:\\n{last_email.body}",
+    f"Subject: {last_email['subject']}\\n\\n"
+    f"Body:\\n{last_email['body']}",
     ExtractEmail
 )
 bob_email = extracted.email

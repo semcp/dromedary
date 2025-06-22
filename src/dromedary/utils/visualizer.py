@@ -5,8 +5,8 @@ matplotlib.use('MacOSX')
 
 import matplotlib.pyplot as plt
 import networkx as nx
-from typing import Dict, Any, List
-from ..capability import CapabilityValue, Source, SourceType
+from typing import Dict, Any, List, Tuple
+from ..provenance_graph import ProvenanceGraph, SourceType
 
 
 class DependencyGraphVisualizer:
@@ -14,13 +14,9 @@ class DependencyGraphVisualizer:
         self.graph = nx.DiGraph()
         self.node_labels = {}
         self.node_colors = {}
-        self.initial_globals = set()
         self.topological_order = []
         self.has_cycles = False
         self.cycle_info = []
-        
-    def set_initial_globals(self, globals_dict: Dict[str, Any]):
-        self.initial_globals = set(globals_dict.keys())
         
     def clear_graph(self):
         self.graph.clear()
@@ -30,111 +26,64 @@ class DependencyGraphVisualizer:
         self.has_cycles = False
         self.cycle_info.clear()
     
-    def build_graph_from_execution_trace(self, interpreter_globals: Dict[str, Any], execution_trace: List[Dict]):
-        user_vars = {}
-        for var_name, value in interpreter_globals.items():
-            if isinstance(value, CapabilityValue) and var_name not in self.initial_globals:
-                user_vars[var_name] = value
-        
-        for var_name, cap_value in user_vars.items():
-            self._add_variable_node(var_name, cap_value)
-        
-        for var_name, cap_value in user_vars.items():
-            self._add_variable_dependencies(var_name, cap_value, user_vars)
-        
-        for call_record in execution_trace:
-            self._add_function_call(call_record, user_vars)
-    
-    def _add_variable_node(self, var_name: str, cap_value: CapabilityValue):
-        node_id = f"var_{var_name}"
-        if node_id not in self.graph:
+    def build_from_subgraph(self, 
+                            subgraph_nodes: Dict[int, Any], 
+                            subgraph_edges: List[Tuple[int, int]], 
+                            prov_graph: ProvenanceGraph,
+                            node_id_to_name: Dict[int, str]):
+        """
+        Builds a networkx graph from a pre-filtered subgraph.
+        """
+        for node_id, value in subgraph_nodes.items():
             self.graph.add_node(node_id)
-            self.node_labels[node_id] = var_name
-            self.node_colors[node_id] = self._get_variable_color(cap_value)
-    
-    def _get_variable_color(self, cap_value: CapabilityValue) -> str:
-        if not cap_value.capability.sources:
+            label = node_id_to_name.get(node_id, self._format_node_label(value))
+            self.node_labels[node_id] = label
+            
+            source = prov_graph.sources.get(node_id)
+            self.node_colors[node_id] = self._get_node_color(source)
+
+        for from_id, to_id in subgraph_edges:
+            self.graph.add_edge(from_id, to_id)
+
+    def _get_node_color(self, source) -> str:
+        """Determines node color based on its Source."""
+        if not source:
             return 'lightgray'
         
-        source_type = cap_value.capability.sources[-1].type
-        
-        if source_type == SourceType.USER:
+        if source.type == SourceType.USER:
             return 'lightgreen'
-        elif source_type == SourceType.TOOL:
+        elif source.type == SourceType.TOOL:
             return 'lightcyan'
-        elif source_type == SourceType.SYSTEM:
+        elif source.type == SourceType.INVOCATION:
+            return 'mediumpurple'
+        elif source.type == SourceType.SYSTEM:
             return 'lightsalmon'
         
         return 'lightgray'
-    
-    def _add_variable_dependencies(self, var_name: str, cap_value: CapabilityValue, all_vars: Dict[str, CapabilityValue]):
-        var_node_id = f"var_{var_name}"
+
+    def _format_node_label(self, value: Any, max_len: int = 25) -> str:
+        """Creates a concise, readable label for a node's value."""
+        if isinstance(value, str):
+            if len(value) > max_len:
+                return f'"{value[:max_len]}..."'
+            return f'"{value}"'
         
-        direct_deps = []
-        for dep in cap_value.dependencies.values():
-            for dep_var_name, dep_cap_value in all_vars.items():
-                if dep is dep_cap_value:
-                    direct_deps.append(dep_var_name)
-                    break
+        if isinstance(value, (list, tuple, set)):
+            return f"{type(value).__name__} (len={len(value)})"
         
-        filtered_deps = []
-        for dep_var_name in direct_deps:
-            is_indirect = False
-            dep_cap_value = all_vars[dep_var_name]
-            
-            for other_dep_name in direct_deps:
-                if other_dep_name != dep_var_name:
-                    other_cap_value = all_vars[other_dep_name]
-                    for other_dep in other_cap_value.dependencies.values():
-                        if other_dep is dep_cap_value:
-                            is_indirect = True
-                            break
-                    if is_indirect:
-                        break
-            
-            if not is_indirect:
-                filtered_deps.append(dep_var_name)
+        if isinstance(value, dict):
+             return f"dict (len={len(value)})"
         
-        for dep_var_name in filtered_deps:
-            dep_node_id = f"var_{dep_var_name}"
-            if not self.graph.has_edge(dep_node_id, var_node_id):
-                self.graph.add_edge(dep_node_id, var_node_id)
-    
-    def _add_function_call(self, call_record: Dict, user_vars: Dict[str, CapabilityValue]):
-        """Add function/tool call from execution trace"""
-        func_name = call_record['function']
-        input_vars = call_record.get('args', [])
+        if isinstance(value, (int, float, bool)) or value is None:
+            return repr(value)
+
+        # For class objects or functions, use their name
+        if hasattr(value, '__name__'):
+            return value.__name__
         
-        for k, v in call_record.get('kwargs', {}).items():
-            if isinstance(v, list):
-                input_vars.extend(v)
-            else:
-                input_vars.append(v)
-        
-        result_var = call_record.get('result_assigned_to')
-        
-        input_vars = [var for var in input_vars if var in user_vars]
-        
-        if not input_vars and not result_var:
-            # no relevant variables involved
-            return
-        
-        func_node_id = f"func_{func_name}"
-        if func_node_id not in self.graph:
-            self.graph.add_node(func_node_id)
-            self.node_labels[func_node_id] = f"{func_name}()"
-            self.node_colors[func_node_id] = 'lightblue'
-        
-        for var_name in input_vars:
-            var_node_id = f"var_{var_name}"
-            if not self.graph.has_edge(var_node_id, func_node_id):
-                self.graph.add_edge(var_node_id, func_node_id)
-        
-        if result_var and result_var in user_vars:
-            var_node_id = f"var_{result_var}"
-            if not self.graph.has_edge(func_node_id, var_node_id):
-                self.graph.add_edge(func_node_id, var_node_id)
-    
+        # For other objects, just show their type
+        return f"<{type(value).__name__}>"
+
     def _topological_sort(self) -> bool:
         """
         Perform topological sorting on the graph.
@@ -194,7 +143,6 @@ class DependencyGraphVisualizer:
         pos = {}
         levels = {}
         
-        # assign levels to nodes based on their dependencies
         for node in self.topological_order:
             if self.graph.in_degree(node) == 0:
                 levels[node] = 0
@@ -205,7 +153,6 @@ class DependencyGraphVisualizer:
                         max_predecessor_level = max(max_predecessor_level, levels[predecessor])
                 levels[node] = max_predecessor_level + 1
         
-        # group nodes by their dependency levels
         level_groups = {}
         for node, level in levels.items():
             if level not in level_groups:
@@ -342,6 +289,7 @@ class DependencyGraphVisualizer:
             plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='lightgreen', markersize=12, label='User Data'),
             plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='lightblue', markersize=12, label='Function/Tool'),
             plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='lightcyan', markersize=12, label='Tool Result'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='mediumpurple', markersize=12, label='Function Call'),
             plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='lightsalmon', markersize=12, label='System Operation'),
         ]
         
@@ -365,34 +313,63 @@ class InterpreterVisualized:
     def __init__(self, interpreter_class, **interpreter_kwargs):
         self.interpreter = interpreter_class(**interpreter_kwargs)
         self.visualizer = DependencyGraphVisualizer()
-
-        self.visualizer.set_initial_globals(self.interpreter.globals)
+        
+        self.initial_globals = set(self.interpreter.globals.keys())
     
     def clear_for_new_conv(self):
-        """Clear the dependency graph and execution trace for a new conversation"""
+        """Clear the dependency graph for a new conversation"""
         self.visualizer.clear_graph()
-        if hasattr(self.interpreter, 'clear_execution_trace'):
-            self.interpreter.clear_execution_trace()
         if hasattr(self.interpreter, 'reset_globals'):
             self.interpreter.reset_globals()
-            self.visualizer.set_initial_globals(self.interpreter.globals)
-        
+            self.initial_globals = set(self.interpreter.globals.keys())
         plt.close('all')
     
     def execute(self, code: str) -> Dict[str, Any]:
-        self.visualizer.clear_graph()
-        
-        if hasattr(self.interpreter, 'clear_execution_trace'):
-            self.interpreter.clear_execution_trace()
-        
-        result = self.interpreter.execute(code)
-        
-        # Build the dependency graph regardless of success, as long as there's execution trace
-        execution_trace = self.interpreter.get_execution_trace() if hasattr(self.interpreter, 'get_execution_trace') else []
-        if execution_trace or result["success"]:
-            self.visualizer.build_graph_from_execution_trace(self.interpreter.globals, execution_trace)
-        
-        return result
+        """
+        Execute is now simpler: it just runs the code. 
+        Graph building is deferred until visualization is requested.
+        """
+        return self.interpreter.execute(code)
     
     def visualize(self) -> str:
+        """
+        Builds and displays a focused subgraph of the last execution.
+        """
+        self.visualizer.clear_graph()
+        
+        prov_graph = self.interpreter.provenance_graph
+        if not prov_graph.nodes:
+            return "No dependency graph to visualize"
+
+        leaf_node_ids = []
+        node_id_to_name: Dict[int, str] = {}
+        for name, cap_value in self.interpreter.globals.items():
+            if name not in self.initial_globals and hasattr(cap_value, 'node_id'):
+                if cap_value.node_id not in leaf_node_ids:
+                    leaf_node_ids.append(cap_value.node_id)
+            
+            if hasattr(cap_value, 'node_id'):
+                if cap_value.node_id in node_id_to_name:
+                    if name not in node_id_to_name[cap_value.node_id]:
+                        node_id_to_name[cap_value.node_id] += f" / {name}"
+                else:
+                    node_id_to_name[cap_value.node_id] = name
+        
+        if self.interpreter.last_result:
+            last_node_id = self.interpreter.last_result.node_id
+            if last_node_id not in leaf_node_ids:
+                leaf_node_ids.append(last_node_id)
+
+        if not leaf_node_ids:
+            return "No new variables or final result were produced by the script to visualize."
+
+        subgraph_nodes, subgraph_edges = prov_graph.get_ancestors_subgraph(leaf_node_ids)
+        
+        self.visualizer.build_from_subgraph(
+            subgraph_nodes, 
+            subgraph_edges, 
+            prov_graph,
+            node_id_to_name
+        )
+        
         return self.visualizer.show_interactive_visualization()
