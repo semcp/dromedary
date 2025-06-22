@@ -19,17 +19,10 @@ jobs:
         python-version: '3.11'
     - uses: astral-sh/setup-uv@v4  
     
-    - name: Install dependencies with verbose output
+    - name: Install dependencies
       run: |
-        echo "Installing with uv sync --dev..."
-        uv sync --dev -v
-        echo "Checking installed packages..."
-        uv pip list
-    
-    - name: Debug - Check pytest installation
-      run: |
-        uv run python -c "import pytest; print('pytest version:', pytest.__version__)" || echo "pytest not found"
-        uv tree --only-dev || echo "uv tree failed"
+        uv sync
+        uv pip install pytest>=7.0.0 pytest-asyncio>=0.21.0
       
     - name: Run tests
       run: make test
