@@ -9,7 +9,9 @@ from typing import Dict, Any, List, Tuple
 from ..provenance_graph import ProvenanceGraph, SourceType
 
 
-class DependencyGraphVisualizer:
+class GraphBuilder:
+    """Responsible for building networkx graphs from ProvenanceGraph data."""
+    
     def __init__(self):
         self.graph = nx.DiGraph()
         self.node_labels = {}
@@ -19,6 +21,7 @@ class DependencyGraphVisualizer:
         self.cycle_info = []
         
     def clear_graph(self):
+        """Clear all graph data."""
         self.graph.clear()
         self.node_labels.clear()
         self.node_colors.clear()
@@ -30,10 +33,13 @@ class DependencyGraphVisualizer:
                             subgraph_nodes: Dict[int, Any], 
                             subgraph_edges: List[Tuple[int, int]], 
                             prov_graph: ProvenanceGraph,
-                            node_id_to_name: Dict[int, str]):
+                            node_id_to_name: Dict[int, str]) -> nx.DiGraph:
         """
         Builds a networkx graph from a pre-filtered subgraph.
+        Returns the constructed graph.
         """
+        self.clear_graph()
+        
         for node_id, value in subgraph_nodes.items():
             self.graph.add_node(node_id)
             label = node_id_to_name.get(node_id, self._format_node_label(value))
@@ -44,6 +50,9 @@ class DependencyGraphVisualizer:
 
         for from_id, to_id in subgraph_edges:
             self.graph.add_edge(from_id, to_id)
+            
+        self._analyze_graph()
+        return self.graph
 
     def _get_node_color(self, source) -> str:
         """Determines node color based on its Source."""
@@ -77,12 +86,14 @@ class DependencyGraphVisualizer:
         if isinstance(value, (int, float, bool)) or value is None:
             return repr(value)
 
-        # For class objects or functions, use their name
         if hasattr(value, '__name__'):
             return value.__name__
         
-        # For other objects, just show their type
         return f"<{type(value).__name__}>"
+
+    def _analyze_graph(self):
+        """Analyze the graph for cycles and create topological ordering."""
+        self._topological_sort()
 
     def _topological_sort(self) -> bool:
         """
@@ -108,7 +119,7 @@ class DependencyGraphVisualizer:
             return False
 
     def _create_partial_topological_order(self):
-        """ Create a partial topological ordering using strongly connected components """
+        """Create a partial topological ordering using strongly connected components."""
         try:
             sccs = list(nx.strongly_connected_components(self.graph))
             
@@ -135,20 +146,71 @@ class DependencyGraphVisualizer:
             print(f"Warning: Could not create partial topological order: {e}")
             self.topological_order = list(self.graph.nodes())
 
-    def _create_topological_layout(self) -> Dict:
-        """Create a layout based on topological ordering with proper dependency levels"""
-        if not self.topological_order:
-            return nx.spring_layout(self.graph, k=3.0, iterations=150, seed=42)
+
+class GraphRenderer:
+    """Responsible for rendering networkx graphs using matplotlib."""
+    
+    def __init__(self):
+        pass
+    
+    def render_interactive_graph(self, 
+                                graph: nx.DiGraph,
+                                node_labels: Dict[int, str],
+                                node_colors: Dict[int, str],
+                                topological_order: List[int],
+                                has_cycles: bool = False,
+                                cycle_info: List[List[int]] = None) -> str:
+        """Render the graph interactively using matplotlib."""
+        if len(graph.nodes) == 0:
+            return "No dependency graph to visualize"
+        
+        cycle_info = cycle_info or []
+        
+        plt.figure(figsize=(16, 10))
+        plt.clf()
+        
+        pos = self._create_layout(graph, topological_order, has_cycles)
+        
+        rendered_node_colors = self._prepare_node_colors(graph, node_colors, has_cycles, cycle_info)
+        
+        self._draw_nodes(graph, pos, rendered_node_colors)
+        
+        edge_colors, edge_widths = self._prepare_edge_styling(graph, has_cycles, cycle_info)
+        self._draw_edges(graph, pos, edge_colors, edge_widths)
+        
+        self._draw_labels(graph, pos, node_labels)
+        
+        self._setup_plot_styling(has_cycles)
+        
+        plt.tight_layout()
+        plt.show()
+        
+        return "Interactive visualization displayed"
+    
+    def _create_layout(self, graph: nx.DiGraph, topological_order: List[int], has_cycles: bool) -> Dict:
+        """Create an appropriate layout for the graph."""
+        if len(graph.nodes) <= 15:
+            return self._create_hierarchical_layout(graph, topological_order)
+        else:
+            if not has_cycles and topological_order:
+                return self._create_topological_layout(graph, topological_order)
+            else:
+                return nx.spring_layout(graph, k=3.0, iterations=150, seed=42)
+
+    def _create_topological_layout(self, graph: nx.DiGraph, topological_order: List[int]) -> Dict:
+        """Create a layout based on topological ordering with proper dependency levels."""
+        if not topological_order:
+            return nx.spring_layout(graph, k=3.0, iterations=150, seed=42)
         
         pos = {}
         levels = {}
         
-        for node in self.topological_order:
-            if self.graph.in_degree(node) == 0:
+        for node in topological_order:
+            if graph.in_degree(node) == 0:
                 levels[node] = 0
             else:
                 max_predecessor_level = -1
-                for predecessor in self.graph.predecessors(node):
+                for predecessor in graph.predecessors(node):
                     if predecessor in levels:
                         max_predecessor_level = max(max_predecessor_level, levels[predecessor])
                 levels[node] = max_predecessor_level + 1
@@ -172,24 +234,24 @@ class DependencyGraphVisualizer:
         
         return pos
 
-    def _create_hierarchical_layout(self) -> Dict:
-        """Create a left-to-right hierarchical layout"""
-        if self.topological_order:
-            return self._create_topological_layout()
+    def _create_hierarchical_layout(self, graph: nx.DiGraph, topological_order: List[int]) -> Dict:
+        """Create a left-to-right hierarchical layout."""
+        if topological_order:
+            return self._create_topological_layout(graph, topological_order)
         
         pos = {}
         
-        sources = [n for n in self.graph.nodes() if self.graph.in_degree(n) == 0]
+        sources = [n for n in graph.nodes() if graph.in_degree(n) == 0]
         
         if not sources:
-            return nx.spring_layout(self.graph, k=3.0, iterations=150, seed=42)
+            return nx.spring_layout(graph, k=3.0, iterations=150, seed=42)
         
         levels = {}
-        for node in self.graph.nodes():
+        for node in graph.nodes():
             min_level = float('inf')
             for source in sources:
                 try:
-                    path_length = nx.shortest_path_length(self.graph, source, node)
+                    path_length = nx.shortest_path_length(graph, source, node)
                     min_level = min(min_level, path_length)
                 except nx.NetworkXNoPath:
                     continue
@@ -213,49 +275,41 @@ class DependencyGraphVisualizer:
                 pos[node] = (x, y)
         
         return pos
-
-    def show_interactive_visualization(self) -> str:
-        """Show the interactive dependency graph"""
-        if len(self.graph.nodes) == 0:
-            return "No dependency graph to visualize"
+    
+    def _prepare_node_colors(self, graph: nx.DiGraph, node_colors: Dict[int, str], 
+                           has_cycles: bool, cycle_info: List[List[int]]) -> List[str]:
+        """Prepare node colors, highlighting cycle nodes if present."""
+        if not has_cycles:
+            return [node_colors.get(node, 'lightgray') for node in graph.nodes()]
         
-        is_dag = self._topological_sort()
+        cycle_nodes = set()
+        for cycle in cycle_info:
+            cycle_nodes.update(cycle)
         
-        plt.figure(figsize=(16, 10))
-        plt.clf()
-        
-        if len(self.graph.nodes) <= 15:
-            pos = self._create_hierarchical_layout()
-        else:
-            if is_dag:
-                pos = self._create_topological_layout()
+        highlighted_colors = []
+        for node in graph.nodes():
+            if node in cycle_nodes:
+                highlighted_colors.append('red')
             else:
-                pos = nx.spring_layout(self.graph, k=3.0, iterations=150, seed=42)
+                highlighted_colors.append(node_colors.get(node, 'lightgray'))
         
-        node_colors = [self.node_colors.get(node, 'lightgray') for node in self.graph.nodes()]
-        
-        if self.has_cycles:
-            highlighted_colors = []
-            cycle_nodes = set()
-            for cycle in self.cycle_info:
-                cycle_nodes.update(cycle)
-            
-            for node in self.graph.nodes():
-                if node in cycle_nodes:
-                    highlighted_colors.append('red')
-                else:
-                    highlighted_colors.append(self.node_colors.get(node, 'lightgray'))
-            
-            node_colors = highlighted_colors
-        
-        nx.draw_networkx_nodes(self.graph, pos, node_color=node_colors, node_size=3000, alpha=0.9, edgecolors='black', linewidths=1)
-        
+        return highlighted_colors
+    
+    def _draw_nodes(self, graph: nx.DiGraph, pos: Dict, node_colors: List[str]):
+        """Draw the nodes of the graph."""
+        nx.draw_networkx_nodes(graph, pos, node_color=node_colors, node_size=3000, 
+                              alpha=0.9, edgecolors='black', linewidths=1)
+    
+    def _prepare_edge_styling(self, graph: nx.DiGraph, has_cycles: bool, 
+                            cycle_info: List[List[int]]) -> Tuple[List[str], List[int]]:
+        """Prepare edge colors and widths, highlighting cycle edges if present."""
         edge_colors = []
         edge_widths = []
-        for edge in self.graph.edges():
-            if self.has_cycles:
+        
+        for edge in graph.edges():
+            if has_cycles:
                 is_cycle_edge = False
-                for cycle in self.cycle_info:
+                for cycle in cycle_info:
                     for i in range(len(cycle)):
                         if (cycle[i] == edge[0] and cycle[(i+1) % len(cycle)] == edge[1]):
                             is_cycle_edge = True
@@ -273,15 +327,22 @@ class DependencyGraphVisualizer:
                 edge_colors.append('black')
                 edge_widths.append(4)
         
-        nx.draw_networkx_edges(self.graph, pos, arrows=True, arrowsize=25, alpha=0.8, 
+        return edge_colors, edge_widths
+    
+    def _draw_edges(self, graph: nx.DiGraph, pos: Dict, edge_colors: List[str], edge_widths: List[int]):
+        """Draw the edges of the graph."""
+        nx.draw_networkx_edges(graph, pos, arrows=True, arrowsize=25, alpha=0.8, 
                              edge_color=edge_colors, width=edge_widths, arrowstyle='-|>', 
                              connectionstyle='arc3,rad=0.3', min_source_margin=30, min_target_margin=30)
-        
-        nx.draw_networkx_labels(self.graph, pos, self.node_labels, font_size=11, font_weight='bold', 
+    
+    def _draw_labels(self, graph: nx.DiGraph, pos: Dict, node_labels: Dict[int, str]):
+        """Draw the node labels."""
+        nx.draw_networkx_labels(graph, pos, node_labels, font_size=11, font_weight='bold', 
                               bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.8, edgecolor='none'))
-        
+    
+    def _setup_plot_styling(self, has_cycles: bool):
+        """Set up the plot title, legend, and styling."""
         title = 'Dromedary Data and Control Flow Graph'
-        
         plt.title(title, fontsize=16, fontweight='bold', pad=20)
         plt.axis('off')
         
@@ -293,7 +354,7 @@ class DependencyGraphVisualizer:
             plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='lightsalmon', markersize=12, label='System Operation'),
         ]
         
-        if self.has_cycles:
+        if has_cycles:
             legend_elements.append(
                 plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=12, label='Cycle Node')
             )
@@ -302,11 +363,37 @@ class DependencyGraphVisualizer:
             )
         
         plt.legend(handles=legend_elements, loc='upper right', fontsize=10)
+
+
+class DependencyGraphVisualizer:
+    """Coordinates between GraphBuilder and GraphRenderer to visualize dependency graphs."""
+    
+    def __init__(self):
+        self.graph_builder = GraphBuilder()
+        self.graph_renderer = GraphRenderer()
         
-        plt.tight_layout()
-        plt.show()
-        
-        return f"Interactive visualization displayed"
+    def clear_graph(self):
+        """Clear the graph data."""
+        self.graph_builder.clear_graph()
+    
+    def build_from_subgraph(self, 
+                            subgraph_nodes: Dict[int, Any], 
+                            subgraph_edges: List[Tuple[int, int]], 
+                            prov_graph: ProvenanceGraph,
+                            node_id_to_name: Dict[int, str]):
+        """Build a networkx graph from a pre-filtered subgraph."""
+        self.graph_builder.build_from_subgraph(subgraph_nodes, subgraph_edges, prov_graph, node_id_to_name)
+
+    def show_interactive_visualization(self) -> str:
+        """Show the interactive dependency graph."""
+        return self.graph_renderer.render_interactive_graph(
+            self.graph_builder.graph,
+            self.graph_builder.node_labels,
+            self.graph_builder.node_colors,
+            self.graph_builder.topological_order,
+            self.graph_builder.has_cycles,
+            self.graph_builder.cycle_info
+        )
 
 
 class InterpreterVisualized:
