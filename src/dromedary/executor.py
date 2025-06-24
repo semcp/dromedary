@@ -259,9 +259,9 @@ class NodeExecutor(ast.NodeVisitor):
             if self._is_special_function(func):
                 # Pass the invocation node as a dependency to the special function.
                 # The wrappers in interpreter.py are designed to accept this.
-                unwrapped_kwargs['dependencies'] = [invocation_cap]
+                kwargs['dependencies'] = [invocation_cap]
                 
-                result = func(*unwrapped_args, **unwrapped_kwargs)
+                result = func(*args, **kwargs)
 
                 if not isinstance(result, CapabilityValue):
                     raise TypeError(f"Special function {func_name} was expected to return a CapabilityValue.")
