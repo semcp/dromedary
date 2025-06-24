@@ -56,11 +56,16 @@ class EmailPolicy(Policy):
         
         untrusted_tools = set(self.config.get("untrusted_provenance_sources", []))
         
-        # Get the source for this node from the provenance graph
-        source = provenance_graph.sources.get(recipients_cap.node_id)
-        if source and source.type.value == "tool":
-            if source.identifier in untrusted_tools:
-                violations.append(f"Cannot send email to address from untrusted source '{source.identifier}'. Use the search_contacts_by_name or search_contacts_by_email tools to get the email address.")
+        # Get all ancestors of the recipients node
+        ancestors, _ = provenance_graph.get_ancestors_subgraph([recipients_cap.node_id])
+        
+        for node_id in ancestors:
+            source = provenance_graph.sources.get(node_id)
+            if source and source.type.value == "tool":
+                if source.identifier in untrusted_tools:
+                    violations.append(f"Cannot send email to address from untrusted source '{source.identifier}'. Use the search_contacts_by_name or search_contacts_by_email tools to get the email address.")
+                    # We can break after finding the first violation to avoid duplicate messages
+                    break
         
         return violations
 
