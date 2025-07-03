@@ -119,7 +119,9 @@ class ServerConnection:
             try:
                 await self._exit_stack.aclose()
             except Exception as e:
-                logger.warning(f"Error during cleanup of server {self.name}: {e}")
+                error_msg = str(e)
+                if "different task" not in error_msg and "cancel scope" not in error_msg:
+                    logger.warning(f"Error during cleanup of server {self.name}: {e}")
             finally:
                 self._exit_stack = None
         self._session = None
@@ -179,6 +181,14 @@ class MCPClientManager:
         self._connection_factory = connection_factory or StdioConnectionFactory()
         self._connections: Dict[str, ServerConnection] = {}
         self._tool_to_server_mapping: Dict[str, str] = {}
+
+    async def __aenter__(self):
+        await self.initialize_from_config()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.shutdown()
+        return False
 
     async def initialize_from_config(self) -> List[str]:
         server_configs = load_mcp_configs_from_file(self._config_path)
@@ -276,6 +286,9 @@ class MCPClientManager:
         connection, actual_tool_name = self._resolve_tool(tool_name)
         return await connection.call_tool(actual_tool_name, arguments)
 
+    def get_all_servers(self) -> List[str]:
+        return list(self._connections.keys())
+
     def get_all_tools(self) -> Dict[str, Any]:
         all_tools = {}
         for connection in self._connections.values():
@@ -298,7 +311,13 @@ class MCPClientManager:
         ]
         
         if disconnect_tasks:
-            await asyncio.gather(*disconnect_tasks, return_exceptions=True)
+            results = await asyncio.gather(*disconnect_tasks, return_exceptions=True)
+            
+            for result in results:
+                if isinstance(result, Exception):
+                    error_msg = str(result)
+                    if "different task" not in error_msg and "cancel scope" not in error_msg:
+                        logger.warning(f"Unexpected error during server disconnect: {result}")
         
         self._connections.clear()
         self._tool_to_server_mapping.clear()
