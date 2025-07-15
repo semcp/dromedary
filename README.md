@@ -148,9 +148,9 @@ A custom Python interpreter to execute the Python code written by the Privileged
 
 Load MCP servers to execute real-world workflows ranging from email, calendar, GitHub, Slack, etc.
 
-### A Special Tool for Quarenteed-LLM
+### A Special Tool for Quarantined-LLM
 
-A special tool called `query_ai_assistant` that can be used to query a Quarenteed-LLM for string manipulation. The Quarenteed-LLM has no access to tools, and thus cannot affect the real world. Some string manipulation includes understanding the email content and find some important information that the Privileged LLM Agent needs.
+A special tool called `query_ai_assistant` that can be used to query a Quarantined-LLM for string manipulation. The Quarantined-LLM has no access to tools, and thus cannot affect the real world. Some string manipulation includes understanding the email content and find some important information that the Privileged LLM Agent needs.
 
 ### Policy Engine
 
