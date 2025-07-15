@@ -188,3 +188,7 @@ The configuration file should follow this format:
 - [1] Mark Russinovich, Microsoft Azure CTO, [Prompt Injection is one of the most critical risks when integrating LLMs into real-world workflows, especially in customer-facing scenarios.](https://www.linkedin.com/posts/markrussinovich_securing-ai-agents-with-information-flow-activity-7336492549919907840-eGWX?utm_source=share&utm_medium=member_desktop&rcm=ACoAACG7Q-4Bkx_VF7dYDhyAfLgaBmWzEZsShAw)
 - [2] Simon Willison, [Code-Then-Execute Pattern](https://simonwillison.net/2025/Jun/13/prompt-injection-design-patterns/#the-code-then-execute-pattern)
 - [3] Model Context Protocol, [Model Context Protocol](https://modelcontextprotocol.io/)
+
+## Trademarks
+
+This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft trademarks or logos is subject to and must follow Microsoft’s Trademark & Brand Guidelines. Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship. Any use of third-party trademarks or logos are subject to those third-party’s policies.
