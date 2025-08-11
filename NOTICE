@@ -11,3 +11,7 @@ https://arxiv.org/abs/2503.18813
 © 2025 Google DeepMind. All rights reserved. Licensed under CC-BY-4.0.
 
 You may obtain a copy of the license at https://creativecommons.org/licenses/by/4.0/.
+
+This project contains dependencies on the following libraries: 
+
+[langgraph](https://github.com/langchain-ai/langgraph) also licensed under MIT
